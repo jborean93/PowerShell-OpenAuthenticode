@@ -13,7 +13,7 @@ using System.Threading.Tasks;
 namespace OpenAuthenticode;
 
 [Cmdlet(VerbsCommon.Get, "OpenAuthenticodeSignature")]
-[OutputType(typeof(SignatureInfo))]
+[OutputType(typeof(SignedCms))]
 public sealed class GetOpenAuthenticodeSignature : PSCmdlet
 {
     [Parameter(
@@ -74,9 +74,35 @@ public sealed class SetOpenAuthenticodeSignature : PSCmdlet
     }
 }
 
-internal sealed class SignatureHelper
+public static class SignatureHelper
 {
-    public static SignatureInfo GetFileSignature(string path)
+    public static CounterSignature? GetCounterSignature(PSObject obj)
+    {
+        SignedCms data = (SignedCms)obj.BaseObject;
+        if (data.SignerInfos[0].CounterSignerInfos.Count == 0 ||
+            data.SignerInfos[0].CounterSignerInfos[0].Certificate == null)
+        {
+            return null;
+        }
+
+        SignerInfo counterSigner = data.SignerInfos[0].CounterSignerInfos[0];
+
+        DateTime? signingTime = null;
+        foreach (CryptographicAttributeObject attr in counterSigner.SignedAttributes)
+        {
+            if (attr.Oid.FriendlyName == "signingTime" && attr.Values[0] is Pkcs9SigningTime time)
+            {
+                signingTime = time.SigningTime.ToUniversalTime();
+                break;
+            }
+        }
+
+        return new(counterSigner.Certificate!,
+            HashAlgorithmName.FromOid(counterSigner.DigestAlgorithm.Value ?? ""),
+            (DateTime)signingTime!);
+    }
+
+    internal static SignedCms GetFileSignature(string path)
     {
         string ext = Path.GetExtension(path);
         IAuthenticodeProvider provider = AuthenticodeProvider.GetProvider(ext, File.ReadAllBytes(path));
@@ -103,41 +129,14 @@ internal sealed class SignatureHelper
             throw new CryptographicException($"File '{path}' signature mismatch");
         }
 
-        X509Certificate2? cert = signInfo.SignerInfos[0].Certificate;
-        if (cert == null)
-        {
-            throw new RuntimeException("Unknown error, no signing certificate found");
-        }
+        PSObject signedPSObject = PSObject.AsPSObject(signInfo);
+        signedPSObject.TypeNames.Insert(0, "OpenAuthenticode.AuthenticodeSignature");
+        signedPSObject.Properties.Add(new PSNoteProperty("Path", path), true);
 
-        CounterSignature? timestampInfo = null;
-        if (signInfo.SignerInfos[0].CounterSignerInfos.Count > 0 &&
-            signInfo.SignerInfos[0].CounterSignerInfos[0].Certificate != null)
-        {
-            SignerInfo counterSigner = signInfo.SignerInfos[0].CounterSignerInfos[0];
-
-            DateTime? signingTime = null;
-            foreach (CryptographicAttributeObject attr in counterSigner.SignedAttributes)
-            {
-                if (attr.Oid.FriendlyName == "signingTime" && attr.Values[0] is Pkcs9SigningTime time)
-                {
-                    signingTime = time.SigningTime.ToUniversalTime();
-                    break;
-                }
-            }
-            if (signingTime == null)
-            {
-                throw new RuntimeException("Unknown error, no signing time found in counter signature");
-            }
-
-            timestampInfo = new(counterSigner.Certificate!,
-                HashAlgorithmName.FromOid(counterSigner.DigestAlgorithm.Value ?? ""),
-                (DateTime)signingTime);
-        }
-
-        return new(path, cert, HashAlgorithmName.FromOid(dataContent.DigestAlgorithm.Value ?? ""), timestampInfo);
+        return signInfo;
     }
 
-    public static void SetFileSignature(string path, X509Certificate2 certificate,
+    internal static void SetFileSignature(string path, X509Certificate2 certificate,
         HashAlgorithmName hashAlgorithm, X509IncludeOption includeOption, string? timestampServer,
         HashAlgorithmName? timestampAlgorithm)
     {
@@ -202,8 +201,8 @@ internal sealed class SignatureHelper
     }
 }
 
-public record SignatureInfo(string Path, X509Certificate2 Certificate, HashAlgorithmName HashAlgorithm,
-    CounterSignature? TimeStampInfo);
+// public record SignatureInfo(string Path, X509Certificate2 Certificate, HashAlgorithmName HashAlgorithm,
+//     CounterSignature? TimeStampInfo);
 
 public record CounterSignature(X509Certificate2 Certificate, HashAlgorithmName HashAlgorithm,
     DateTime TimeStamp);

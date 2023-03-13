@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Configuration>
+  <ViewDefinitions>
+    <View>
+      <Name>OpenAuthenticode.AuthenticodeSignature</Name>
+      <ViewSelectedBy>
+        <TypeName>OpenAuthenticode.AuthenticodeSignature</TypeName>
+      </ViewSelectedBy>
+      <TableControl>
+        <TableHeaders>
+          <TableColumnHeader>
+            <Width>40</Width>
+          </TableColumnHeader>
+          <TableColumnHeader>
+            <Label>Certificate</Label>
+            <Width>40</Width>
+          </TableColumnHeader>
+          <TableColumnHeader>
+            <Width>18</Width>
+          </TableColumnHeader>
+          <TableColumnHeader>
+            <Width>22</Width>
+          </TableColumnHeader>
+        </TableHeaders>
+        <TableRowEntries>
+          <TableRowEntry>
+            <TableColumnItems>
+              <TableColumnItem>
+                <PropertyName>Path</PropertyName>
+              </TableColumnItem>
+              <TableColumnItem>
+                <ScriptBlock>$_.Certificate.Thumbprint</ScriptBlock>
+              </TableColumnItem>
+              <TableColumnItem>
+                <PropertyName>HashAlgorithmName</PropertyName>
+              </TableColumnItem>
+              <TableColumnItem>
+                <PropertyName>TimeStampInfo</PropertyName>
+              </TableColumnItem>
+            </TableColumnItems>
+          </TableRowEntry>
+        </TableRowEntries>
+      </TableControl>
+    </View>
+  </ViewDefinitions>
+</Configuration>

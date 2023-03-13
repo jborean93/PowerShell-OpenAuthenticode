@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Types>
+  <Type>
+    <Name>OpenAuthenticode.AuthenticodeSignature</Name>
+    <Members>
+      <NoteProperty>
+        <Name>Path</Name>
+        <Value>""</Value>
+      </NoteProperty>
+      <ScriptProperty>
+        <Name>Certificate</Name>
+        <GetScriptBlock>
+          $this.SignerInfos[0].Certificate
+        </GetScriptBlock>
+      </ScriptProperty>
+      <ScriptProperty>
+        <Name>HashAlgorithmName</Name>
+        <GetScriptBlock>
+          [System.Security.Cryptography.HashAlgorithmName]::FromOid($this.SignerInfos[0].DigestAlgorithm.Value)
+        </GetScriptBlock>
+      </ScriptProperty>
+      <CodeProperty>
+        <Name>TimeStampInfo</Name>
+        <GetCodeReference>
+          <TypeName>OpenAuthenticode.SignatureHelper</TypeName>
+          <MethodName>GetCounterSignature</MethodName>
+        </GetCodeReference>
+      </CodeProperty>
+    </Members>
+  </Type>
+</Types>

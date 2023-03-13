@@ -57,8 +57,8 @@ Accepts a list of paths for the `-Path` parameter.
 
 ## OUTPUTS
 
-### OpenAuthenticode.SignatureInfo
-The Authenticode signature details from the path specified if it was signed. This object has the following properties:
+### System.Security.Cryptography.Pkcs.SignedCms / OpenAuthenticode.AuthenticodeSignature
+The Authenticode signature details from the path specified if it was signed. This object has the following extra properties added as part of the extended type data of `OpenAuthenticode.AuthenticodeSignature`:
 
 + `Path`: The file path that this signature is for
 
@@ -66,7 +66,7 @@ The Authenticode signature details from the path specified if it was signed. Thi
 
 + `HashAlgorithm`: The hash algorithm that was used in the Authenticode signature
 
-+ `TimeStampInfo`: Information about the counter signature timestamp
++ `TimeStampInfo`: Information about the counter signature timestamp including its certificate, timestamp date in UTC, and timestamp hashing algorithm
 
 ## NOTES
 Unlike [Get-AuthenticodeSignature](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.security/get-authenticodesignature?view=powershell-7.3) this cmdlet will write an error if there is a Authenticode signature validation problem.
