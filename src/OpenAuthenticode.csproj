@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net6.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Formats.Asn1" Version="7.0.0" PrivateAssets="all" />
+    <PackageReference Include="System.Management.Automation" Version="7.2.0" PrivateAssets="all" />
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="7.0.1" />
+  </ItemGroup>
+</Project>
