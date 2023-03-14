@@ -1,33 +1,14 @@
 using System;
 using System.Collections.Generic;
-using System.Management.Automation;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Azure.Identity;
 using Azure.Security.KeyVault.Certificates;
 using Azure.Security.KeyVault.Keys.Cryptography;
 
-namespace OpenAuthenticode;
+namespace OpenAuthenticode.Shared;
 
-[Cmdlet(VerbsCommon.Get, "OpenAuthenticodeAzKey")]
-[OutputType(typeof(AzureKey))]
-public sealed class GetOpenAuthenticodeAzKey : PSCmdlet
-{
-    [Parameter(Mandatory = true, Position = 0)]
-    [Alias("VaultName")]
-    public string Vault { get; set; } = "";
-
-    [Parameter(Mandatory = true, Position = 1)]
-    [Alias("KeyName")]
-    public string Key { get; set; } = "";
-
-    protected override void ProcessRecord()
-    {
-        WriteObject(AzureKey.Create(Vault, Key));
-    }
-}
-
-public sealed class AzureKey : IDisposable
+public sealed class AzureKey : KeyProvider, IDisposable
 {
     private readonly CryptographyClient _client;
     private readonly string _keyAlgorithm;
@@ -37,11 +18,11 @@ public sealed class AzureKey : IDisposable
         0x03, 0x02, 0x1A, 0x05, 0x00, 0x04, 0x14,
     };
 
-    public X509Certificate2 Certificate { get; }
+    public override X509Certificate2 Certificate { get; }
 
-    internal AsymmetricAlgorithm Key { get; }
+    internal override AsymmetricAlgorithm Key { get; }
 
-    public AzureKey(CryptographyClient client, X509Certificate2 cert)
+    private AzureKey(CryptographyClient client, X509Certificate2 cert)
     {
         _client = client;
         _keyAlgorithm = cert.GetKeyAlgorithm(); ;
@@ -74,11 +55,11 @@ public sealed class AzureKey : IDisposable
         }
     }
 
-    public static AzureKey Create(string vaultName, string keyName)
+    internal static AzureKey Create(string vaultName, string keyName)
     {
         string keyVaultUrl = $"https://{vaultName}.vault.azure.net/";
 
-        DefaultAzureCredential cred = new();
+        DefaultAzureCredential cred = new(includeInteractiveCredentials: false);
 
         CertificateClient certClient = new(new Uri(keyVaultUrl), cred);
         KeyVaultCertificateWithPolicy certInfo = certClient.GetCertificate(keyName);
@@ -119,7 +100,6 @@ public sealed class AzureKey : IDisposable
     }
     ~AzureKey() => Dispose();
 }
-
 
 internal sealed class AzureKeyVaultRSAKey : RSA
 {

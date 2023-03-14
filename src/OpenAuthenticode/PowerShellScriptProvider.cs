@@ -20,6 +20,8 @@ internal class PowerShellScriptProvider : IAuthenticodeProvider
     private byte[] _content;
     private Encoding _fileEncoding;
 
+    public AuthenticodeProvider Provider => AuthenticodeProvider.PowerShell;
+
     internal static string[] FileExtensions => new[] { ".ps1", ".psc1", ".psd1", ".psm1", ".ps1xml" };
 
     /// <summary>
@@ -30,9 +32,20 @@ internal class PowerShellScriptProvider : IAuthenticodeProvider
     /// <returns>The PowerShellScriptProvider></returns>
     public static PowerShellScriptProvider Create(byte[] data, Encoding? fileEncoding)
     {
-        Encoding encoding = fileEncoding ?? Encoding.Default;
+        if (fileEncoding == null)
+        {
+            using (MemoryStream dataMs = new(data, 0, Math.Max(data.Length, 8)))
+            using (StreamReader reader = new(dataMs, true))
+            {
+                reader.Read();
+                fileEncoding = reader.CurrentEncoding;
+            }
+        }
 
-        string scriptText = encoding.GetString(data);
+        // We need to use GetString as StreamReader will remove the BOM if
+        // present. GetString preserves the BOM in the string which is
+        // important as it's part of the data to be hashed.
+        string scriptText = fileEncoding.GetString(data);
         ReadOnlySpan<char> scriptData = new(scriptText.ToCharArray());
 
         int signatureIdx = scriptData.IndexOf(new ReadOnlySpan<char>($"\r\n{_startBlock}".ToCharArray()));
@@ -42,28 +55,29 @@ internal class PowerShellScriptProvider : IAuthenticodeProvider
         if (signatureIdx != -1)
         {
             ReadOnlySpan<char> scriptContents = scriptData[..signatureIdx];
-            ReadOnlySpan<char> signatureBlock = scriptData[(signatureIdx + _startBlock.Length + 4)..];
+            hashableData = Encoding.Unicode.GetBytes(scriptContents.ToArray());
 
-            StringBuilder base64Signature = new();
-            foreach (ReadOnlySpan<char> line in signatureBlock.EnumerateLines())
+            ReadOnlySpan<char> signatureBlock = scriptData[(signatureIdx + _startBlock.Length + 4)..];
+            int endSignatureIdx = signatureBlock.IndexOf(new ReadOnlySpan<char>($"\r\n{_endBlock}".ToCharArray()));
+            if (IsValidEndBlock(signatureBlock, endSignatureIdx))
             {
-                if (line.StartsWith(_endBlock))
+                signatureBlock = signatureBlock[..endSignatureIdx];
+
+                StringBuilder base64Signature = new();
+                foreach (ReadOnlySpan<char> line in signatureBlock.EnumerateLines())
                 {
-                    break;
+                    base64Signature.Append(line[2..]);
                 }
 
-                base64Signature.Append(line[2..]);
+                signature = Convert.FromBase64String(base64Signature.ToString());
             }
-
-            signature = Convert.FromBase64String(base64Signature.ToString());
-            hashableData = Encoding.Unicode.GetBytes(scriptContents.ToArray());
         }
         else
         {
             hashableData = Encoding.Unicode.GetBytes(scriptText);
         }
 
-        return new PowerShellScriptProvider(hashableData, signature, encoding);
+        return new PowerShellScriptProvider(hashableData, signature, fileEncoding);
     }
 
     public byte[] Signature { get; set; }
@@ -106,7 +120,7 @@ internal class PowerShellScriptProvider : IAuthenticodeProvider
 
     public void Save(string path)
     {
-        string content = Encoding.Unicode.GetString(_content);
+        string content = Encoding.Unicode.GetString(_content); ;
         if (Signature.Length > 0)
         {
             StringBuilder signatureContent = new();
@@ -123,6 +137,53 @@ internal class PowerShellScriptProvider : IAuthenticodeProvider
             content += signatureContent.ToString();
         }
 
-        File.WriteAllText(path, content, _fileEncoding);
+        // The content already contains the original BOM chars so ensure that
+        // the _fileEncoding doesn't add another one breaking the signature.
+        File.WriteAllText(path, content, new BOMLessEncoding(_fileEncoding));
     }
+
+    private static bool IsValidEndBlock(ReadOnlySpan<char> block, int endIdx)
+    {
+        // Ensures the end signature block is valid and that it is at the end
+        // of the file with 1 or 2 newline chars (\r or \n). Authenticode on
+        // Win doesn't seem to care whether it ends on a proper newline, just
+        // that it's some combination of 1 or 2 \r, \n chars.
+        if (endIdx == -1)
+        {
+            return false;
+        }
+
+        string[] validEndlineCandidates = new[] { "\r", "\n", "\r\n", "\n\r", "\r\r", "\n\n" };
+        string remaining = block.Slice(endIdx + _endBlock.Length + 2).ToString();
+        return Array.Exists(validEndlineCandidates, c => c == remaining);
+    }
+}
+
+public class BOMLessEncoding : Encoding
+{
+    private readonly Encoding _encoding;
+
+    public BOMLessEncoding(Encoding encoding)
+    {
+        _encoding = encoding;
+    }
+
+    public override byte[] GetPreamble() => Array.Empty<byte>();
+
+    public override int GetByteCount(char[] chars, int index, int count)
+        => _encoding.GetByteCount(chars, index, count);
+
+    public override int GetBytes(char[] chars, int charIndex, int charCount, byte[] bytes, int byteIndex)
+        => _encoding.GetBytes(chars, charIndex, charCount, bytes, byteIndex);
+
+    public override int GetCharCount(byte[] bytes, int index, int count)
+        => _encoding.GetCharCount(bytes, index, count);
+
+    public override int GetChars(byte[] bytes, int byteIndex, int byteCount, char[] chars, int charIndex)
+        => _encoding.GetChars(bytes, byteIndex, byteCount, chars, charIndex);
+
+    public override int GetMaxByteCount(int charCount)
+        => _encoding.GetMaxByteCount(charCount);
+    public override int GetMaxCharCount(int byteCount)
+        => _encoding.GetMaxCharCount(byteCount);
 }

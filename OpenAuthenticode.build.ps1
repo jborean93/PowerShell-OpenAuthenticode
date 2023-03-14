@@ -13,7 +13,7 @@ $Manifest = Test-ModuleManifest -Path $manifestItem.FullName -ErrorAction Ignore
 $Version = $Manifest.Version
 $BuildPath = [IO.Path]::Combine($PSScriptRoot, 'output')
 $PowerShellPath = [IO.Path]::Combine($PSScriptRoot, 'module')
-$CSharpPath = [IO.Path]::Combine($PSScriptRoot, 'src')
+$CSharpPath = [IO.Path]::Combine($PSScriptRoot, 'src', $ModuleName)
 $ReleasePath = [IO.Path]::Combine($BuildPath, $ModuleName, $Version)
 $IsUnix = $PSEdition -eq 'Core' -and -not $IsWindows
 $UseNativeArguments = $PSVersionTable.PSVersion.Major -gt 7 -or ($PSVersionTable.PSVersion.Major -eq 7 -and $PSVersionTable.PSVersion.Minor -gt 2)
@@ -33,14 +33,13 @@ task Clean {
 
 task BuildDocs {
     $helpParams = @{
-        Path       = [IO.Path]::Combine($PSScriptRoot, 'docs', 'en-US')
+        Path = [IO.Path]::Combine($PSScriptRoot, 'docs', 'en-US')
         OutputPath = [IO.Path]::Combine($ReleasePath, 'en-US')
     }
     New-ExternalHelp @helpParams | Out-Null
 }
 
 task BuildManaged {
-    Push-Location -Path $CSharpPath
     $arguments = @(
         'publish'
         '--configuration', $Configuration
@@ -48,6 +47,8 @@ task BuildManaged {
         '-nologo'
         "-p:Version=$Version"
     )
+
+    Push-Location -LiteralPath $CSharpPath
     try {
         foreach ($framework in $TargetFrameworks) {
             Write-Host "Compiling for $framework"
@@ -65,16 +66,16 @@ task BuildManaged {
 
 task CopyToRelease {
     $copyParams = @{
-        Path        = [IO.Path]::Combine($PowerShellPath, '*')
+        Path = [IO.Path]::Combine($PowerShellPath, '*')
         Destination = $ReleasePath
-        Recurse     = $true
-        Force       = $true
+        Recurse = $true
+        Force = $true
     }
     Copy-Item @copyParams
 
     foreach ($framework in $TargetFrameworks) {
         $buildFolder = [IO.Path]::Combine($CSharpPath, 'bin', $Configuration, $framework, 'publish')
-        $binFolder = [IO.Path]::Combine($ReleasePath, 'bin', $framework)
+        $binFolder = [IO.Path]::Combine($ReleasePath, 'bin', $framework, $_.Name)
         if (-not (Test-Path -LiteralPath $binFolder)) {
             New-Item -Path $binFolder -ItemType Directory | Out-Null
         }
@@ -92,9 +93,9 @@ task Sign {
     [byte[]]$certBytes = [System.Convert]::FromBase64String($env:PSMODULE_SIGNING_CERT)
     $cert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($certBytes, $certPassword)
     $signParams = @{
-        Certificate     = $cert
+        Certificate = $cert
         TimestampServer = 'http://timestamp.digicert.com'
-        HashAlgorithm   = 'SHA256'
+        HashAlgorithm = 'SHA256'
     }
 
     Get-ChildItem -LiteralPath $ReleasePath -Recurse -ErrorAction SilentlyContinue |
@@ -114,9 +115,9 @@ task Package {
     }
 
     $repoParams = @{
-        Name               = 'LocalRepo'
-        SourceLocation     = $BuildPath
-        PublishLocation    = $BuildPath
+        Name = 'LocalRepo'
+        SourceLocation = $BuildPath
+        PublishLocation = $BuildPath
         InstallationPolicy = 'Trusted'
     }
     if (Get-PSRepository -Name $repoParams.Name -ErrorAction SilentlyContinue) {
@@ -134,9 +135,9 @@ task Package {
 
 task Analyze {
     $pssaSplat = @{
-        Path        = $ReleasePath
-        Settings    = [IO.Path]::Combine($PSScriptRoot, 'ScriptAnalyzerSettings.psd1')
-        Recurse     = $true
+        Path = $ReleasePath
+        Settings = [IO.Path]::Combine($PSScriptRoot, 'ScriptAnalyzerSettings.psd1')
+        Recurse = $true
         ErrorAction = 'SilentlyContinue'
     }
     $results = Invoke-ScriptAnalyzer @pssaSplat

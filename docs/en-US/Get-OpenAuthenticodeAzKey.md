@@ -8,43 +8,55 @@ schema: 2.0.0
 # Get-OpenAuthenticodeAzKey
 
 ## SYNOPSIS
-Get the Azure KeyVault certificate and key for use with Authenticode signing.
+Get an Azure KeyVault certificate and key for use with Authenticode signing.
 
 ## SYNTAX
 
 ```
-Get-OpenAuthenticodeAzKey [-Vault] <String> [-Key] <String> [<CommonParameters>]
+Get-OpenAuthenticodeAzKey [-Vault] <String> -Certificate <String> [<CommonParameters>]
 ```
 
 ## DESCRIPTION
-Gets an Azure KeyVault certificate and key to use with signing a file with Authenticode.
-The principal used to get the key must have the following access permissions on the key:
+Gets the Azure keyVault certificate and key from the vault and key name specified.
+This key can be used with [Set-OpenAuthenticodeSignature](./Set-OpenAuthenticodeSignature.md) to sign a file without having to download the key locally.
+The authenticated Azure principal must have the following Azure access policy permissions on the requested key:
 
 * Key Permissions: `Sign`
 * Certificate Permissions: `Get`
 
+The signing workflow does not require the key to be present on the local machine as it calls the Azure `Sign` API with the Authenticode digest.
+This ensures the key does not leave Azure itself but rather Azure is used to sign the data remotely.
+
+Currently only certificates signed with an RSA can be used, ECDSA support is planned for the future.
+The certificate must also have the Key Usage of `Digital Signature (80)` and Enhanced Key Usage `Code Signing (1.3.6.1.5.5.7.3.3)` for it to be used with Authenticode.
+
+Currently authentication relies on the lookup behaviour of [DefaultAzureCredential](https://learn.microsoft.com/en-us/dotnet/api/overview/azure/identity-readme?view=azure-dotnet).
+It will lookup environment variables, device managed identities, az cli contexts, etc to authenticate with Azure.
+It has not been set to allow for interactive authentication through the web browser.
+
 ## EXAMPLES
 
-### Example 1
+### Example 1: Get key for use with signing
 ```powershell
-PS C:\> $key = Get-OpenAuthenticodeAzKey -Vault code-signing-test -Key Authenticode
-PS C:\> Set-AuthenticodeSignature test.ps1 -AzureKey $key
+PS C:\> $key = Get-OpenAuthenticodeAzKey -Vault code-signing-test -Certificate Authenticode
+PS C:\> Set-AuthenticodeSignature test.ps1 -Key $key
 ```
 
-Signs the file `test.ps1` with the Azure KeyVault key `Authenticode` in the vault `code-signing-test`.
+Gets the Azure KeyVault key `Authenticode` in the vault `code-signing-test` and uses it to sign the file `test.ps1`.
+This does not include any pre-requisite steps for setting up the authentication details used by `Get-OpenAuthenticodeAzKey`.
 
 ## PARAMETERS
 
-### -Key
-The name of the Azure KeyVault certificate to retrieve.
+### -Certificate
+The name of the Azure KeyVault certificate/key to retrieve.
 
 ```yaml
 Type: String
 Parameter Sets: (All)
-Aliases: KeyName
+Aliases: CertificateName
 
 Required: True
-Position: 1
+Position: Named
 Default value: None
 Accept pipeline input: False
 Accept wildcard characters: False
@@ -71,11 +83,16 @@ This cmdlet supports the common parameters: -Debug, -ErrorAction, -ErrorVariable
 ## INPUTS
 
 ### None
+None
+
 ## OUTPUTS
 
-### OpenAuthenticode.AzureKey
-The AzureKey object that can be used with the `-AzureKey` parameter in `Set-OpenAuthenticodeSignature`.
+### OpenAuthenticode.Shared.AzureKey
+The AzureKey object that can be used with the `-Key` parameter in `Set-OpenAuthenticodeSignature`.
 
 ## NOTES
 
 ## RELATED LINKS
+
+[Azure Key Vault](https://azure.microsoft.com/en-au/products/key-vault/)
+[DefaultAzureCredential Workflow](https://learn.microsoft.com/en-us/dotnet/api/overview/azure/identity-readme?view=azure-dotnet)

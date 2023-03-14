@@ -12,26 +12,56 @@ Set an authenticode signature on a file.
 
 ## SYNTAX
 
-### Certificate (Default)
+### PathCertificate (Default)
 ```
-Set-OpenAuthenticodeSignature [-Path] <String[]> -Certificate <X509Certificate2>
- [-HashAlgorithm <HashAlgorithmName>] [-IncludeOption <X509IncludeOption>] [-TimestampServer <String>]
- [-TimestampHashAlgorithm <HashAlgorithmName>] [<CommonParameters>]
+Set-OpenAuthenticodeSignature [-Path] <String[]> -Certificate <X509Certificate2> [-Encoding <Encoding>]
+ [-HashAlgorithm <HashAlgorithmName>] [-IncludeOption <X509IncludeOption>] [-PassThru]
+ [-Provider <AuthenticodeProvider>] [-TimeStampHashAlgorithm <HashAlgorithmName>] [-TimestampServer <String>]
+ [-WhatIf] [-Confirm] [<CommonParameters>]
 ```
 
-### AzureKv
+### PathKey
 ```
-Set-OpenAuthenticodeSignature [-Path] <String[]> -AzureKey <AzureKey> [-HashAlgorithm <HashAlgorithmName>]
- [-IncludeOption <X509IncludeOption>] [-TimestampServer <String>] [-TimestampHashAlgorithm <HashAlgorithmName>]
- [<CommonParameters>]
+Set-OpenAuthenticodeSignature [-Path] <String[]> -Key <KeyProvider> [-Encoding <Encoding>]
+ [-HashAlgorithm <HashAlgorithmName>] [-IncludeOption <X509IncludeOption>] [-PassThru]
+ [-Provider <AuthenticodeProvider>] [-TimeStampHashAlgorithm <HashAlgorithmName>] [-TimestampServer <String>]
+ [-WhatIf] [-Confirm] [<CommonParameters>]
+```
+
+### LiteralPathCertificate
+```
+Set-OpenAuthenticodeSignature -LiteralPath <String[]> -Certificate <X509Certificate2> [-Encoding <Encoding>]
+ [-HashAlgorithm <HashAlgorithmName>] [-IncludeOption <X509IncludeOption>] [-PassThru]
+ [-Provider <AuthenticodeProvider>] [-TimeStampHashAlgorithm <HashAlgorithmName>] [-TimestampServer <String>]
+ [-WhatIf] [-Confirm] [<CommonParameters>]
+```
+
+### LiteralPathKey
+```
+Set-OpenAuthenticodeSignature -LiteralPath <String[]> -Key <KeyProvider> [-Encoding <Encoding>]
+ [-HashAlgorithm <HashAlgorithmName>] [-IncludeOption <X509IncludeOption>] [-PassThru]
+ [-Provider <AuthenticodeProvider>] [-TimeStampHashAlgorithm <HashAlgorithmName>] [-TimestampServer <String>]
+ [-WhatIf] [-Confirm] [<CommonParameters>]
 ```
 
 ## DESCRIPTION
 This cmdlet can sign the file provided with an Authenticode signature.
+This signature can be validated using [Get-OpenAuthenticodeSignature](./Get-OpenAuthenticodeSignature.md) or any of the Authenticode APIs, including the ones of a Windows host.
+
+It is possible to sign a file using a certificate object with an associated key.
+The simplest way to get a certificate is to use the [Get-PfxCertificate cmdlet](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.security/get-pfxcertificate?view=powershell-7.3) which works on both Windows and non-Windows hosts.
+It is also possible to get a code signing certificate through the `Cert:\` provider alongside the `-CodeSigningCert` parameter on Windows.
+The certificate must have the Key Usage of `Digital Signature (80)` and Enhanced Key Usage `Code Signing (1.3.6.1.5.5.7.3.3)` for it to be used with Authenticode.
+While it should be signed by a trusted CA authority for it to be validated normally, it is not a requirement to sign the file.
+
+See [about_AuthenticodeProviders](./about_AuthenticodeProviders.md) for more information about what providers are currently supported.
+When using a file path that has no extension, an explicit `-Provider` must be specified to indicate what Authenticode provider needs to be used to sign and embed the signature in the file specified.
+
+Setting a signature will edit the file provided, use `-WhatIf` to test whether a signature can be set without actually changing the file.
 
 ## EXAMPLES
 
-### Example 1 - Signs a PowerShell ps1 script
+### Example 1: Signs a PowerShell ps1 script
 ```powershell
 PS C:\> $pass = Read-Host -AsSecureString -Prompt "Enter pfx password"
 PS C:\> $cert = Get-PfxCertificate -FilePath ~/code-signing.pfx -Password $pass
@@ -40,7 +70,7 @@ PS C:\> Set-OpenAuthenticodeSignature -Path test.ps1 -Certificate $cert
 
 Signs the script `test.ps1` with the certificate specified.
 
-### Example 2 - Signs a PowerShell ps1 script and a counter signature timestamp
+### Example 2: Signs a PowerShell ps1 script and a counter signature timestamp
 ```powershell
 PS C:\> $pass = Read-Host -AsSecureString -Prompt "Enter pfx password"
 PS C:\> $cert = Get-PfxCertificate -FilePath ~/code-signing.pfx -Password $pass
@@ -49,15 +79,26 @@ PS C:\> Set-OpenAuthenticodeSignature -Path test.ps1 -Certificate $cert -Timesta
 
 Like example 1 but also adds a counter signature with the Digicert timestamp server.
 
+### Example 3: Sign using an Azure KeyVault key
+```powershell
+PS C:\> $key = Get-OpenAuthenticodeAzKey -Vault code-signing-test -Certificate Authenticode
+PS C:\> Set-AuthenticodeSignature test.ps1 -Key $key
+```
+
+Gets the Azure KeyVault key `Authenticode` in the vault `code-signing-test` and uses it to sign the file `test.ps1`.
+This does not include any pre-requisite steps for setting up the authentication details used by `Get-OpenAuthenticodeAzKey`.
+
 ## PARAMETERS
 
-### -AzureKey
-An Azure Key to use for signing the file.
-The [Get-OpenAuthenticodeAzKey](./Get-OpenAuthenticodeAzKey.md) cmdlet can be used to get this key.
+### -Certificate
+The certificate used to sign the files specified.
+Use the `Get-PfxCertificate` or `Get-ChildItem Cert:\... -CodeSigningCert` (Windows only) to get a certificate to use for signing.
+The certificate must have access to its associated private key for it to be able to sign the file.
+It should also have the Key Usage of `Digital Signature (80)` and Enhanced Key Usage `Code Signing (1.3.6.1.5.5.7.3.3)`.
 
 ```yaml
-Type: AzureKey
-Parameter Sets: AzureKv
+Type: X509Certificate2
+Parameter Sets: PathCertificate, LiteralPathCertificate
 Aliases:
 
 Required: True
@@ -67,15 +108,31 @@ Accept pipeline input: False
 Accept wildcard characters: False
 ```
 
-### -Certificate
-The certificate used to sign the files specified.
+### -Encoding
+A hint to provide to the Authenticode provider that indicates what the file string encoding method is.
+This is only used by Authenticode providers that need to read the file as a string, like PowerShell.
+The default used is dependent on the Authenticode provider but most commonly will be `UTF-8`.
+
+This accepts a `System.Text.Encoding` type but also a string or int representing the encoding from `[System.Text.Encoding]::GetEncoding(...)`.
+Some common encoding values are:
+
+* `Utf8` - UTF-8 but without a Byte Order Mark (BOM)
+* `ASCII` - ASCII (bytes 0-127)
+* `ANSI` - The ANSI encoding commonly used in legacy Windows encoding
+* `OEM` - The value of `[System.Text.Encoding]::Default` which is UTF-8 without a BOM
+* `Unicode` - UTF-16-LE
+* `Utf8Bom` - UTF-8 but with a BOM
+* `Utf8NoBom` - Same as `Utf8`
+
+The `ANSI` encoding typically refers to the legacy Windows encoding used in older PowerShell versions.
+If creating a script that should be used across the various PowerShell versions, it is highly recommended to use an encoding with a `BOM` like `Utf8Bom` or `Unicode`.
 
 ```yaml
-Type: X509Certificate2
-Parameter Sets: Certificate
+Type: Encoding
+Parameter Sets: (All)
 Aliases:
 
-Required: True
+Required: False
 Position: Named
 Default value: None
 Accept pipeline input: False
@@ -85,6 +142,13 @@ Accept wildcard characters: False
 ### -HashAlgorithm
 The hashing algorithm to use when generating the Authenticode signature.
 This defaults to SHA256 if not specified.
+
+Known algorithms are:
+
+* `SHA1`
+* `SHA256`
+* `SHA384`
+* `SHA512`
 
 ```yaml
 Type: HashAlgorithmName
@@ -100,7 +164,14 @@ Accept wildcard characters: False
 
 ### -IncludeOption
 Determines which certificates in the certificate trust chain are included in the digital signature.
-Defauls to `ExcludeRoot`.
+Existing options are:
+
+* `None` - No chain information is included
+* `ExcludeRoot` - The entire chain is included except for the root certificate
+* `EndCertOnly` - Only the end certificate is included
+* `WholeChain` - The whole chain is included
+
+The default is `ExcludeRoot` which will include all the certs and their intermediaries in the Authenticode signature, except the root CA certificate.
 
 ```yaml
 Type: X509IncludeOption
@@ -115,22 +186,97 @@ Accept pipeline input: False
 Accept wildcard characters: False
 ```
 
-### -Path
-The path to the files to sign.
+### -Key
+A custom key object that can be used to signed the file.
+Currently this is only supported by Azure KeyVault keys and this value can be retrieved from [Get-OpenAuthenticodeAzKey](./Get-OpenAuthenticodeAzKey.md).
+
+```yaml
+Type: KeyProvider
+Parameter Sets: PathKey, LiteralPathKey
+Aliases:
+
+Required: True
+Position: Named
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -LiteralPath
+Specifies the path to the files to sign with an Authenticode signature.
+Unlike `-Path`, the path is used exactly as it is typed, no wildcard matching will occur.
+
+If the path does not have a file extension, the `-Provider` parameter must be set to tell the cmdlet how it should be signed.
 
 ```yaml
 Type: String[]
+Parameter Sets: LiteralPathCertificate, LiteralPathKey
+Aliases: PSPath
+
+Required: True
+Position: Named
+Default value: None
+Accept pipeline input: True (ByPropertyName)
+Accept wildcard characters: False
+```
+
+### -PassThru
+Output the signature information that was placed in the file.
+If not set, the cmdlet will not output anything.
+
+```yaml
+Type: SwitchParameter
 Parameter Sets: (All)
+Aliases:
+
+Required: False
+Position: Named
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -Path
+The path to the files to sign with an Authenticode signature.
+Wildcards are permitted and a signature will be outputted for every file that matches the wildcard.
+This is only supported for paths in the FileSystem provider.
+
+If the path does not have a file extension, the `-Provider` parameter must be set to tell the cmdlet how it should be signed.
+
+```yaml
+Type: String[]
+Parameter Sets: PathCertificate, PathKey
 Aliases: FilePath
 
 Required: True
 Position: 0
 Default value: None
 Accept pipeline input: True (ByPropertyName, ByValue)
+Accept wildcard characters: True
+```
+
+### -Provider
+Specify the Authenticode provider used to sign the file.
+If the file has no extension then an explicit provider must be specified.
+
+Valid providers are:
+
+* `NotSpecified` - Uses the file extension to find the provider
+* `PowerShell` - Uses the PowerShell script Authenticode provider
+
+```yaml
+Type: AuthenticodeProvider
+Parameter Sets: (All)
+Aliases:
+
+Required: False
+Position: Named
+Default value: None
+Accept pipeline input: False
 Accept wildcard characters: False
 ```
 
-### -TimestampHashAlgorithm
+### -TimeStampHashAlgorithm
 The hashing algorithm used in the counter signature timestamp if `-TimestampServer` was specified.
 This defaults to the value of `-HashAlgorithm` if not specified.
 
@@ -151,10 +297,43 @@ The timestamp server used to counter sign the Authenticode signature.
 The time stamp represents the exact time the certificate was added to the file.
 A time stamp prevents the signature from being invalidated once the certificate has expired.
 
+The value specified here is the URL to an RFC 3161 compliant time stamping server.
+It is possible to specify the hashing algorithm the timestamp server uses with the `-TimeStampHashAlgorithm`.
+
 ```yaml
 Type: String
 Parameter Sets: (All)
 Aliases:
+
+Required: False
+Position: Named
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -Confirm
+Prompts you for confirmation before running the cmdlet.
+
+```yaml
+Type: SwitchParameter
+Parameter Sets: (All)
+Aliases: cf
+
+Required: False
+Position: Named
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -WhatIf
+Shows what would happen if the cmdlet runs. The cmdlet is not run.
+
+```yaml
+Type: SwitchParameter
+Parameter Sets: (All)
+Aliases: wi
 
 Required: False
 Position: Named
@@ -169,11 +348,28 @@ This cmdlet supports the common parameters: -Debug, -ErrorAction, -ErrorVariable
 ## INPUTS
 
 ### System.String[]
+Accepts a list of paths for the `-Path` parameter.
+
 ## OUTPUTS
 
 ### None
-None
+No output is present if `-PassThru` is not specified.
+
+### System.Security.Cryptography.Pkcs.SignedCms / OpenAuthenticode.AuthenticodeSignature
+If `-PassThru` is specified, this will output the Authenticode signature details that was signed to the path specified. This object has the following extra properties added as part of the extended type data of `OpenAuthenticode.AuthenticodeSignature`:
+
++ `Path`: The file path that this signature is for
+
++ `Certificate`: The X.509 certificate that signed the file
+
++ `HashAlgorithm`: The hash algorithm that was used in the Authenticode signature
+
++ `TimeStampInfo`: Information about the counter signature timestamp including its certificate, timestamp date in UTC, and timestamp hashing algorithm
 
 ## NOTES
+Unlike  [Set-AuthenticodeSignature](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.security/set-authenticodesignature?view=powershell-7.3) this cmdlet uses an RFC 3161 compliant time stamp server for the counter signatures.
+Windows treats both an RFC 3161 and the legacy Authenticode timestamped signature as the same so this should not affect the validation of the signature on Windows.
 
 ## RELATED LINKS
+
+[Authenticode Digital Signatures](https://learn.microsoft.com/en-us/windows-hardware/drivers/install/authenticode)

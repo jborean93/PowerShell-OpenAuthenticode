@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Security.Cryptography;
 using System.Security.Cryptography.Pkcs;
 using System.Text;
@@ -10,6 +11,11 @@ namespace OpenAuthenticode;
 /// </summary>
 internal interface IAuthenticodeProvider
 {
+    /// <summary>
+    /// The provider enum identifier.
+    /// </summary>
+    public AuthenticodeProvider Provider { get; }
+
     /// <summary>
     /// Gets and sets the PKCS #7 signature data.
     /// An empty byte[] is treated as having no signature.
@@ -45,15 +51,47 @@ internal interface IAuthenticodeProvider
 }
 
 /// <summary>
-/// Stores the registered providers.
+/// Stores the registered providers and a factory method to create them.
 /// </summary>
-internal sealed class AuthenticodeProvider
+internal static class ProviderFactory
 {
-    private static readonly (string[], Func<byte[], Encoding?, IAuthenticodeProvider>)[] _providers = new
-        (string[], Func<byte[], Encoding?, IAuthenticodeProvider>)[]
+    private static readonly Dictionary<AuthenticodeProvider, Func<byte[], Encoding?, IAuthenticodeProvider>> _providers = new();
+
+    private static readonly List<(AuthenticodeProvider, string[])> _providerExtensions = new();
+
+    static ProviderFactory()
     {
-        (PowerShellScriptProvider.FileExtensions, PowerShellScriptProvider.Create),
-    };
+        RegisterProvider(AuthenticodeProvider.PowerShell,
+            PowerShellScriptProvider.FileExtensions,
+            PowerShellScriptProvider.Create);
+    }
+
+    /// <summary>
+    /// Get an instance of the provider requested.
+    /// </summary>
+    /// <remarks>
+    /// The <paramref name="fileEncoding"/> parameter can be used to provide a
+    /// hint to the Authenticode provider chosen about how the byte[] data is
+    /// encoded. This will only be used by providers that need to read the data
+    /// contents as a string, like
+    /// <see cref="Authenticode.PowerShellScriptProvider"/>. If not not set, or
+    /// null, the encoding used is determined by the defaults in the provider
+    /// itself.
+    /// </remarks>
+    /// <param name="provider">The provider to create</param>
+    /// <param name="data">The raw data for the provider to manage</param>
+    /// <param name="encoding">The encoding hint for reading the data bytes as a string</param>
+    /// <returns>The provider that can be used to get/set signatures for the path specified</returns>
+    public static IAuthenticodeProvider Create(AuthenticodeProvider provider, byte[] data,
+        Encoding? fileEncoding = null)
+    {
+        if (_providers.TryGetValue(provider, out var createFunc))
+        {
+            return createFunc(data, fileEncoding);
+        }
+
+        throw new NotImplementedException($"Authenticode support for '{provider}' has not been implemented");
+    }
 
     /// <summary>
     /// Get the provider for the extension provided.
@@ -75,19 +113,35 @@ internal sealed class AuthenticodeProvider
     /// <param name="data">The raw data for the provider to manage</param>
     /// <param name="encoding">The encoding hint for reading the data bytes as a string</param>
     /// <returns>The provider that can be used to get/set signatures for the path specified</returns>
-    public static IAuthenticodeProvider GetProvider(string extension, byte[] data, Encoding? fileEncoding = null)
+    public static IAuthenticodeProvider Create(string extension, byte[] data, Encoding? fileEncoding = null)
     {
         ArgumentNullException.ThrowIfNull(extension, nameof(extension));
         extension = extension.ToLowerInvariant();
 
-        foreach ((var extensions, var createFunc) in _providers)
+        foreach ((var provider, var extensions) in _providerExtensions)
         {
             if (Array.Exists(extensions, e => e == extension))
             {
-                return createFunc(data, fileEncoding);
+                return Create(provider, data, fileEncoding: fileEncoding);
             }
         }
 
         throw new NotImplementedException($"Authenticode support for '{extension}' has not been implemented");
     }
+
+    private static void RegisterProvider(AuthenticodeProvider provider, string[] extensions,
+        Func<byte[], Encoding?, IAuthenticodeProvider> createFunc)
+    {
+        _providers.Add(provider, createFunc);
+        _providerExtensions.Add((provider, extensions));
+    }
+}
+
+/// <summary>
+/// Identifiers for each known provider.
+/// </summary>
+public enum AuthenticodeProvider
+{
+    NotSpecified,
+    PowerShell,
 }
