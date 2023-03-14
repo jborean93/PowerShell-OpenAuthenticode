@@ -28,6 +28,12 @@ internal interface IAuthenticodeProvider
     /// <returns>The indirect data content to sign</returns>
     public SpcIndirectData HashData(Oid digestAlgorithm);
 
+    /// <summary>
+    /// Add extra attributes to the PKCS #7 signature before it is signed.
+    /// It is up to the provider to add any provider specific attributes
+    /// here.
+    /// </summary>
+    /// <param name="signer">The CmsSigner object that will be signed.</param>
     public virtual void AddAttributes(CmsSigner signer) { }
 
     /// <summary>
@@ -58,7 +64,7 @@ internal sealed class AuthenticodeProvider
     /// <paramref name="extension"/> parameter.
     ///
     /// The <paramref name="fileEncoding"/> parameter can be used to provide a
-    /// hint to the authenticode provider chosen about how the byte[] data is
+    /// hint to the Authenticode provider chosen about how the byte[] data is
     /// encoded. This will only be used by providers that need to read the data
     /// contents as a string, like
     /// <see cref="Authenticode.PowerShellScriptProvider"/>. If not not set, or

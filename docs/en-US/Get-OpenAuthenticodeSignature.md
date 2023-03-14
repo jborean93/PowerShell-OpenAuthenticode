@@ -13,7 +13,7 @@ Get an authenticode signature of a file.
 ## SYNTAX
 
 ```
-Get-OpenAuthenticodeSignature [-Path] <String[]> [<CommonParameters>]
+Get-OpenAuthenticodeSignature [-Path] <String[]> [-SkipCertificateCheck] [<CommonParameters>]
 ```
 
 ## DESCRIPTION
@@ -46,13 +46,28 @@ Accept pipeline input: True (ByPropertyName, ByValue)
 Accept wildcard characters: False
 ```
 
+### -SkipCertificateCheck
+Do not validate the certificate that signed the file with the normal CA trust validation.
+When setting this switch, only the signature itself is validated.
+
+```yaml
+Type: SwitchParameter
+Parameter Sets: (All)
+Aliases:
+
+Required: False
+Position: Named
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
 ### CommonParameters
 This cmdlet supports the common parameters: -Debug, -ErrorAction, -ErrorVariable, -InformationAction, -InformationVariable, -OutVariable, -OutBuffer, -PipelineVariable, -Verbose, -WarningAction, and -WarningVariable. For more information, see [about_CommonParameters](http://go.microsoft.com/fwlink/?LinkID=113216).
 
 ## INPUTS
 
 ### System.String[]
-
 Accepts a list of paths for the `-Path` parameter.
 
 ## OUTPUTS

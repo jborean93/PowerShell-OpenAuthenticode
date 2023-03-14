@@ -25,16 +25,19 @@ public sealed class GetOpenAuthenticodeSignature : PSCmdlet
     [Alias("FilePath")]
     public string[] Path { get; set; } = Array.Empty<string>();
 
+    [Parameter()]
+    public SwitchParameter SkipCertificateCheck { get; set; }
+
     protected override void ProcessRecord()
     {
         foreach (string p in Path)
         {
-            WriteObject(SignatureHelper.GetFileSignature(p));
+            WriteObject(SignatureHelper.GetFileSignature(p, SkipCertificateCheck));
         }
     }
 }
 
-[Cmdlet(VerbsCommon.Set, "OpenAuthenticodeSignature")]
+[Cmdlet(VerbsCommon.Set, "OpenAuthenticodeSignature", DefaultParameterSetName = "Certificate")]
 public sealed class SetOpenAuthenticodeSignature : PSCmdlet
 {
     [Parameter(
@@ -47,9 +50,16 @@ public sealed class SetOpenAuthenticodeSignature : PSCmdlet
     public string[] Path { get; set; } = Array.Empty<string>();
 
     [Parameter(
-        Mandatory = true
+        Mandatory = true,
+        ParameterSetName = "Certificate"
     )]
     public X509Certificate2? Certificate { get; set; }
+
+    [Parameter(
+        Mandatory = true,
+        ParameterSetName = "AzureKv"
+    )]
+    public AzureKey? AzureKey { get; set; }
 
     [Parameter()]
     public HashAlgorithmName HashAlgorithm { get; set; } = HashAlgorithmName.SHA256;
@@ -65,11 +75,24 @@ public sealed class SetOpenAuthenticodeSignature : PSCmdlet
 
     protected override void ProcessRecord()
     {
-        Debug.Assert(Certificate != null);
+        X509Certificate2 cert;
+        AsymmetricAlgorithm? key = null;
+        if (ParameterSetName == "Certificate")
+        {
+            Debug.Assert(Certificate != null);
+            cert = Certificate;
+        }
+        else
+        {
+            Debug.Assert(AzureKey != null);
+            cert = AzureKey.Certificate;
+            key = AzureKey.Key;
+        }
+
         foreach (string p in Path)
         {
-            SignatureHelper.SetFileSignature(p, Certificate, HashAlgorithm, IncludeOption, TimestampServer,
-                TimestampHashAlgorithm);
+            SignatureHelper.SetFileSignature(p, cert, HashAlgorithm, IncludeOption, key, TimestampServer,
+                            TimestampHashAlgorithm);
         }
     }
 }
@@ -78,6 +101,8 @@ public static class SignatureHelper
 {
     public static CounterSignature? GetCounterSignature(PSObject obj)
     {
+        // This is used by the ETS type
+        // OpenAuthenticode.AuthenticodeSignature's code property TimeStampInfo
         SignedCms data = (SignedCms)obj.BaseObject;
         if (data.SignerInfos[0].CounterSignerInfos.Count == 0 ||
             data.SignerInfos[0].CounterSignerInfos[0].Certificate == null)
@@ -102,7 +127,7 @@ public static class SignatureHelper
             (DateTime)signingTime!);
     }
 
-    internal static SignedCms GetFileSignature(string path)
+    internal static SignedCms GetFileSignature(string path, bool skipCertValidation)
     {
         string ext = Path.GetExtension(path);
         IAuthenticodeProvider provider = AuthenticodeProvider.GetProvider(ext, File.ReadAllBytes(path));
@@ -115,7 +140,7 @@ public static class SignatureHelper
 
         SignedCms signInfo = new SignedCms();
         signInfo.Decode(signatureData);
-        signInfo.CheckSignature(true);
+        signInfo.CheckSignature(skipCertValidation);
 
         if (signInfo.ContentInfo.ContentType.Value != SpcIndirectData.OID.Value)
         {
@@ -136,8 +161,8 @@ public static class SignatureHelper
         return signInfo;
     }
 
-    internal static void SetFileSignature(string path, X509Certificate2 certificate,
-        HashAlgorithmName hashAlgorithm, X509IncludeOption includeOption, string? timestampServer,
+    internal static void SetFileSignature(string path, X509Certificate2 cert, HashAlgorithmName hashAlgorithm,
+        X509IncludeOption includeOption, AsymmetricAlgorithm? privateKey, string? timestampServer,
         HashAlgorithmName? timestampAlgorithm)
     {
         string ext = Path.GetExtension(path);
@@ -146,7 +171,7 @@ public static class SignatureHelper
         SpcIndirectData dataContent = provider.HashData(
             SpcIndirectData.OidFromHashAlgorithm(hashAlgorithm));
 
-        CmsSigner signer = new(certificate)
+        CmsSigner signer = new(SubjectIdentifierType.IssuerAndSerialNumber, cert, privateKey)
         {
             IncludeOption = includeOption,
         };
@@ -173,7 +198,7 @@ public static class SignatureHelper
     {
         Rfc3161TimestampRequest request = Rfc3161TimestampRequest.CreateFromSignerInfo(
             signerInfo,
-            HashAlgorithmName.SHA256,
+            algorithm,
             requestSignerCertificates: true,
             nonce: RandomNumberGenerator.GetBytes(8));
 
@@ -200,9 +225,6 @@ public static class SignatureHelper
         return;
     }
 }
-
-// public record SignatureInfo(string Path, X509Certificate2 Certificate, HashAlgorithmName HashAlgorithm,
-//     CounterSignature? TimeStampInfo);
 
 public record CounterSignature(X509Certificate2 Certificate, HashAlgorithmName HashAlgorithm,
     DateTime TimeStamp);

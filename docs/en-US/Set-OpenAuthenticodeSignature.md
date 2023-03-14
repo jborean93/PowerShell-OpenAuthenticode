@@ -12,10 +12,18 @@ Set an authenticode signature on a file.
 
 ## SYNTAX
 
+### Certificate (Default)
 ```
 Set-OpenAuthenticodeSignature [-Path] <String[]> -Certificate <X509Certificate2>
  [-HashAlgorithm <HashAlgorithmName>] [-IncludeOption <X509IncludeOption>] [-TimestampServer <String>]
  [-TimestampHashAlgorithm <HashAlgorithmName>] [<CommonParameters>]
+```
+
+### AzureKv
+```
+Set-OpenAuthenticodeSignature [-Path] <String[]> -AzureKey <AzureKey> [-HashAlgorithm <HashAlgorithmName>]
+ [-IncludeOption <X509IncludeOption>] [-TimestampServer <String>] [-TimestampHashAlgorithm <HashAlgorithmName>]
+ [<CommonParameters>]
 ```
 
 ## DESCRIPTION
@@ -43,12 +51,28 @@ Like example 1 but also adds a counter signature with the Digicert timestamp ser
 
 ## PARAMETERS
 
+### -AzureKey
+An Azure Key to use for signing the file.
+The [Get-OpenAuthenticodeAzKey](./Get-OpenAuthenticodeAzKey.md) cmdlet can be used to get this key.
+
+```yaml
+Type: AzureKey
+Parameter Sets: AzureKv
+Aliases:
+
+Required: True
+Position: Named
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
 ### -Certificate
 The certificate used to sign the files specified.
 
 ```yaml
 Type: X509Certificate2
-Parameter Sets: (All)
+Parameter Sets: Certificate
 Aliases:
 
 Required: True
@@ -148,7 +172,6 @@ This cmdlet supports the common parameters: -Debug, -ErrorAction, -ErrorVariable
 ## OUTPUTS
 
 ### None
-
 None
 
 ## NOTES
