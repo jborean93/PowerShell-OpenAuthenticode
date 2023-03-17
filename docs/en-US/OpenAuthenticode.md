@@ -12,10 +12,10 @@ Cross platform module for Authenticode checking and setting. This includes signi
 
 ## OpenAuthenticode Cmdlets
 ### [Get-OpenAuthenticodeAzKey](Get-OpenAuthenticodeAzKey.md)
-Get the Azure KeyVault certificate and key for use with Authenticode signing.
+Get an Azure KeyVault certificate and key for use with Authenticode signing.
 
 ### [Get-OpenAuthenticodeSignature](Get-OpenAuthenticodeSignature.md)
-Get an authenticode signature of a file.
+Gets information about the Authenticode signature for a file.
 
 ### [Set-OpenAuthenticodeSignature](Set-OpenAuthenticodeSignature.md)
 Set an authenticode signature on a file.
