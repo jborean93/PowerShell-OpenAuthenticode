@@ -9,17 +9,17 @@
       <TableControl>
         <TableHeaders>
           <TableColumnHeader>
-            <Width>40</Width>
+            <Width>43</Width>
           </TableColumnHeader>
           <TableColumnHeader>
             <Label>Certificate</Label>
             <Width>40</Width>
           </TableColumnHeader>
           <TableColumnHeader>
-            <Width>18</Width>
+            <Width>13</Width>
           </TableColumnHeader>
           <TableColumnHeader>
-            <Width>22</Width>
+            <Width>24</Width>
           </TableColumnHeader>
         </TableHeaders>
         <TableRowEntries>
@@ -32,7 +32,7 @@
                 <ScriptBlock>$_.Certificate.Thumbprint</ScriptBlock>
               </TableColumnItem>
               <TableColumnItem>
-                <PropertyName>HashAlgorithmName</PropertyName>
+                <PropertyName>HashAlgorithm</PropertyName>
               </TableColumnItem>
               <TableColumnItem>
                 <PropertyName>TimeStampInfo</PropertyName>

@@ -92,9 +92,11 @@ internal class PowerShellScriptProvider : IAuthenticodeProvider
     public SpcIndirectData HashData(Oid digestAlgorithm)
     {
         byte[] fileHash;
-        using (HashAlgorithm algo = SpcIndirectData.HashAlgorithmFromOid(digestAlgorithm))
+        HashAlgorithmName algoName = HashAlgorithmName.FromOid(digestAlgorithm.Value ?? "");
+        using (IncrementalHash algo = IncrementalHash.CreateHash(algoName))
         {
-            fileHash = algo.ComputeHash(_content);
+            algo.AppendData(_content);
+            fileHash = algo.GetCurrentHash();
         }
 
         return new(

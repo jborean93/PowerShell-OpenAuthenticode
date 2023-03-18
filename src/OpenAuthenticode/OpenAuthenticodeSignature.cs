@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Management.Automation;
 using System.Security.Cryptography;
 using System.Security.Cryptography.Pkcs;
@@ -13,9 +14,57 @@ using OpenAuthenticode.Shared;
 
 namespace OpenAuthenticode;
 
-[Cmdlet(VerbsCommon.Get, "OpenAuthenticodeSignature", DefaultParameterSetName = "Path")]
-[OutputType(typeof(SignedCms))]
-public sealed class GetOpenAuthenticodeSignature : PSCmdlet
+public class OpenAuthenticodeSignatureBase : PSCmdlet
+{
+    internal string[] _paths = Array.Empty<string>();
+    internal bool _expandWildCardPaths = false;
+
+    [Parameter()]
+    public AuthenticodeProvider? Provider { get; set; }
+
+    internal (string, ProviderInfo)[] NormalizePaths()
+    {
+        List<(string, ProviderInfo)> result = new();
+        if (_expandWildCardPaths)
+        {
+            foreach (string p in _paths)
+            {
+                Collection<string> resolvedPaths;
+                ProviderInfo provider;
+                try
+                {
+                    resolvedPaths = GetResolvedProviderPathFromPSPath(p, out provider);
+                }
+                catch (ItemNotFoundException e)
+                {
+                    WriteError(new(e, "FileNotFound", ErrorCategory.ObjectNotFound, p));
+                    continue;
+                }
+
+                foreach (string resolvedPath in resolvedPaths)
+                {
+                    result.Add((resolvedPath, provider));
+                }
+            }
+        }
+        else
+        {
+            foreach (string p in _paths)
+            {
+                string resolvedPath = SessionState.Path.GetUnresolvedProviderPathFromPSPath(
+                    p, out var provider, out var _);
+                result.Add((resolvedPath, provider));
+            }
+        }
+
+        return result.ToArray();
+    }
+}
+
+[Cmdlet(VerbsCommon.Clear, "OpenAuthenticodeSignature",
+    DefaultParameterSetName = "Path",
+    SupportsShouldProcess = true)]
+public sealed class ClearOpenAuthenticodeSignature : OpenAuthenticodeSignatureBase
 {
     [Parameter(
         Mandatory = true,
@@ -27,7 +76,15 @@ public sealed class GetOpenAuthenticodeSignature : PSCmdlet
     [Alias("FilePath")]
     [SupportsWildcards]
     [ValidateNotNullOrEmpty]
-    public string[] Path { get; set; } = Array.Empty<string>();
+    public string[] Path
+    {
+        get => _paths;
+        set
+        {
+            _expandWildCardPaths = true;
+            _paths = value;
+        }
+    }
 
     [Parameter(
         Mandatory = true,
@@ -36,7 +93,108 @@ public sealed class GetOpenAuthenticodeSignature : PSCmdlet
     )]
     [Alias("PSPath")]
     [ValidateNotNullOrEmpty]
-    public string[] LiteralPath { get; set; } = Array.Empty<string>();
+    public string[] LiteralPath
+    {
+        get => _paths;
+        set
+        {
+            _expandWildCardPaths = false;
+            _paths = value;
+        }
+    }
+
+    [Parameter()]
+    [EncodingTransformAttribute]
+    [ArgumentCompletions("Utf8", "ASCII", "ANSI", "OEM", "Unicode", "Utf8Bom", "Utf8NoBom")]
+    public Encoding? Encoding { get; set; }
+
+    protected override void ProcessRecord()
+    {
+        (string, ProviderInfo)[] paths = NormalizePaths();
+
+        foreach ((string path, ProviderInfo psProvider) in paths)
+        {
+            try
+            {
+                byte[] fileData = File.ReadAllBytes(path);
+                IAuthenticodeProvider provider;
+                if (Provider != null && Provider != AuthenticodeProvider.NotSpecified)
+                {
+                    provider = ProviderFactory.Create((AuthenticodeProvider)Provider, fileData,
+                        fileEncoding: Encoding);
+                }
+                else
+                {
+                    string ext = System.IO.Path.GetExtension(path);
+                    provider = ProviderFactory.Create(ext, fileData, fileEncoding: Encoding);
+                }
+
+                WriteVerbose($"Getting file '{path}' signature with provider {provider.Provider}");
+                byte[] existingSignature = provider.Signature;
+
+                if (existingSignature.Length > 0)
+                {
+                    WriteVerbose($"Removing signature on file '{path}'");
+                    provider.Signature = Array.Empty<byte>();
+                    if (ShouldProcess(path, "ClearSignature")) {
+                        provider.Save(path);
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                ErrorRecord err = new(
+                    e,
+                    "ClearSignatureError",
+                    ErrorCategory.NotSpecified,
+                    path);
+                WriteError(err);
+                continue;
+            }
+        }
+    }
+}
+
+[Cmdlet(VerbsCommon.Get, "OpenAuthenticodeSignature", DefaultParameterSetName = "Path")]
+[OutputType(typeof(SignedCms))]
+public sealed class GetOpenAuthenticodeSignature : OpenAuthenticodeSignatureBase
+{
+    [Parameter(
+        Mandatory = true,
+        Position = 0,
+        ValueFromPipeline = true,
+        ValueFromPipelineByPropertyName = true,
+        ParameterSetName = "Path"
+    )]
+    [Alias("FilePath")]
+    [SupportsWildcards]
+    [ValidateNotNullOrEmpty]
+    public string[] Path
+    {
+        get => _paths;
+        set
+        {
+            _expandWildCardPaths = true;
+            _paths = value;
+        }
+    }
+
+    [Parameter(
+        Mandatory = true,
+        ValueFromPipelineByPropertyName = true,
+        ParameterSetName = "LiteralPath"
+    )]
+    [Alias("PSPath")]
+    [ValidateNotNullOrEmpty]
+    public string[] LiteralPath
+    {
+        get => _paths;
+        set
+        {
+            _expandWildCardPaths = false;
+            _paths = value;
+        }
+    }
 
     [Parameter(
         Mandatory = true,
@@ -58,9 +216,6 @@ public sealed class GetOpenAuthenticodeSignature : PSCmdlet
     [EncodingTransformAttribute]
     [ArgumentCompletions("Utf8", "ASCII", "ANSI", "OEM", "Unicode", "Utf8Bom", "Utf8NoBom")]
     public Encoding? Encoding { get; set; }
-
-    [Parameter()]
-    public AuthenticodeProvider? Provider { get; set; }
 
     [Parameter()]
     public SwitchParameter SkipCertificateCheck { get; set; }
@@ -103,14 +258,28 @@ public sealed class GetOpenAuthenticodeSignature : PSCmdlet
 
     private void ProcessContent(byte[] data, AuthenticodeProvider selectedProvider, Encoding? dataEncoding)
     {
-        SignedCms? signedData;
         try
         {
             IAuthenticodeProvider provider = ProviderFactory.Create(selectedProvider, data,
                 fileEncoding: dataEncoding);
 
             WriteVerbose($"Getting content signature with provider {provider.Provider}");
-            signedData = SignatureHelper.GetFileSignature(provider, SkipCertificateCheck, TrustStore);
+            SignedCms[] signedData = SignatureHelper.GetFileSignature(provider, SkipCertificateCheck,
+                TrustStore).ToArray();
+
+            if (signedData.Length == 0)
+            {
+                ErrorRecord err = new(
+                    new ItemNotFoundException("Content provided does not contain an authenticode signature"),
+                    "NoSignature",
+                    ErrorCategory.ObjectNotFound,
+                    null);
+                WriteError(err);
+            }
+            foreach (SignedCms cms in signedData)
+            {
+                WriteObject(SignatureHelper.WrapSignedDataForPS(cms, null));
+            }
         }
         catch (Exception e)
         {
@@ -122,56 +291,11 @@ public sealed class GetOpenAuthenticodeSignature : PSCmdlet
             WriteError(err);
             return;
         }
-
-        if (signedData == null)
-        {
-            ErrorRecord err = new(
-                new ItemNotFoundException("Content provided does not contain an authenticode signature"),
-                "NoSignature",
-                ErrorCategory.ObjectNotFound,
-                null);
-            WriteError(err);
-        }
-        else
-        {
-            WriteObject(SignatureHelper.WrapSignedDataForPS(signedData, null));
-        }
     }
 
     private void ProcessPaths()
     {
-        List<(string, ProviderInfo)> paths = new();
-        if (ParameterSetName == "Path")
-        {
-            foreach (string p in Path)
-            {
-                Collection<string> resolvedPaths;
-                ProviderInfo provider;
-                try
-                {
-                    resolvedPaths = GetResolvedProviderPathFromPSPath(p, out provider);
-                }
-                catch (ItemNotFoundException e)
-                {
-                    WriteError(new(e, "FileNotFound", ErrorCategory.ObjectNotFound, p));
-                    continue;
-                }
-
-                foreach (string resolvedPath in resolvedPaths)
-                {
-                    paths.Add((resolvedPath, provider));
-                }
-            }
-        }
-        else
-        {
-            foreach (string p in LiteralPath)
-            {
-                string resolvedPath = SessionState.Path.GetUnresolvedProviderPathFromPSPath(
-                    p, out var provider, out var _);
-                paths.Add((resolvedPath, provider));
-            }
-        }
+        (string, ProviderInfo)[] paths = NormalizePaths();
 
         foreach ((string path, ProviderInfo psProvider) in paths)
         {
@@ -212,9 +336,9 @@ public sealed class GetOpenAuthenticodeSignature : PSCmdlet
                 }
 
                 WriteVerbose($"Getting file '{path}' signature with provider {provider.Provider}");
-                SignedCms? signedData = SignatureHelper.GetFileSignature(provider, SkipCertificateCheck, TrustStore);
+                SignedCms[] signedData = SignatureHelper.GetFileSignature(provider, SkipCertificateCheck, TrustStore).ToArray();
 
-                if (signedData == null)
+                if (signedData.Length == 0)
                 {
                     ErrorRecord err = new(
                         new ItemNotFoundException($"File '{path}' does not contain an authenticode signature"),
@@ -223,9 +347,9 @@ public sealed class GetOpenAuthenticodeSignature : PSCmdlet
                         path);
                     WriteError(err);
                 }
-                else
+                foreach (SignedCms info in signedData)
                 {
-                    WriteObject(SignatureHelper.WrapSignedDataForPS(signedData, path));
+                    WriteObject(SignatureHelper.WrapSignedDataForPS(info, path));
                 }
             }
             catch (Exception e)
@@ -246,7 +370,7 @@ public sealed class GetOpenAuthenticodeSignature : PSCmdlet
     DefaultParameterSetName = "PathCertificate",
     SupportsShouldProcess = true)]
 [OutputType(typeof(SignedCms))]
-public sealed class SetOpenAuthenticodeSignature : PSCmdlet
+public sealed class SetOpenAuthenticodeSignature : OpenAuthenticodeSignatureBase
 {
     [Parameter(
         Mandatory = true,
@@ -265,7 +389,15 @@ public sealed class SetOpenAuthenticodeSignature : PSCmdlet
     [Alias("FilePath")]
     [SupportsWildcards]
     [ValidateNotNullOrEmpty]
-    public string[] Path { get; set; } = Array.Empty<string>();
+    public string[] Path
+    {
+        get => _paths;
+        set
+        {
+            _expandWildCardPaths = true;
+            _paths = value;
+        }
+    }
 
     [Parameter(
         Mandatory = true,
@@ -279,7 +411,15 @@ public sealed class SetOpenAuthenticodeSignature : PSCmdlet
     )]
     [Alias("PSPath")]
     [ValidateNotNullOrEmpty]
-    public string[] LiteralPath { get; set; } = Array.Empty<string>();
+    public string[] LiteralPath
+    {
+        get => _paths;
+        set
+        {
+            _expandWildCardPaths = false;
+            _paths = value;
+        }
+    }
 
     [Parameter(
         Mandatory = true,
@@ -317,9 +457,6 @@ public sealed class SetOpenAuthenticodeSignature : PSCmdlet
     public SwitchParameter PassThru { get; set; }
 
     [Parameter()]
-    public AuthenticodeProvider? Provider { get; set; }
-
-    [Parameter()]
     public HashAlgorithmName? TimeStampHashAlgorithm { get; set; }
 
     [Parameter()]
@@ -341,39 +478,7 @@ public sealed class SetOpenAuthenticodeSignature : PSCmdlet
             key = Key.Key;
         }
 
-        List<(string, ProviderInfo)> paths = new();
-        if (ParameterSetName.StartsWith("LiteralPath"))
-        {
-            foreach (string p in LiteralPath)
-            {
-                string resolvedPath = SessionState.Path.GetUnresolvedProviderPathFromPSPath(
-                    p, out var provider, out var _);
-                paths.Add((resolvedPath, provider));
-            }
-        }
-        else
-        {
-            foreach (string p in Path)
-            {
-                Collection<string> resolvedPaths;
-                ProviderInfo provider;
-                try
-                {
-                    resolvedPaths = GetResolvedProviderPathFromPSPath(p, out provider);
-                }
-                catch (ItemNotFoundException e)
-                {
-                    WriteError(new(e, "FileNotFound", ErrorCategory.ObjectNotFound, p));
-                    continue;
-                }
-
-                foreach (string resolvedPath in resolvedPaths)
-                {
-                    paths.Add((resolvedPath, provider));
-                }
-            }
-        }
-
+        (string, ProviderInfo)[] paths = NormalizePaths();
         foreach ((string path, ProviderInfo psProvider) in paths)
         {
             if (psProvider.ImplementingType != typeof(FileSystemProvider))

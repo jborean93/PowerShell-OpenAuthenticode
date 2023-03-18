@@ -11,6 +11,9 @@ Locale: en-US
 Cross platform module for Authenticode checking and setting. This includes signing and verifying PowerShell scripts like on Windows.
 
 ## OpenAuthenticode Cmdlets
+### [Clear-OpenAuthenticodeSignature](Clear-OpenAuthenticodeSignature.md)
+Removes all Authenticode signatures from the path specified.
+
 ### [Get-OpenAuthenticodeAzKey](Get-OpenAuthenticodeAzKey.md)
 Get an Azure KeyVault certificate and key for use with Authenticode signing.
 

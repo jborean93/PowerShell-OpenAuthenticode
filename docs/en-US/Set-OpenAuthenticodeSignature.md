@@ -16,7 +16,7 @@ Set an authenticode signature on a file.
 ```
 Set-OpenAuthenticodeSignature [-Path] <String[]> -Certificate <X509Certificate2> [-Encoding <Encoding>]
  [-HashAlgorithm <HashAlgorithmName>] [-IncludeOption <X509IncludeOption>] [-PassThru]
- [-Provider <AuthenticodeProvider>] [-TimeStampHashAlgorithm <HashAlgorithmName>] [-TimestampServer <String>]
+ [-TimeStampHashAlgorithm <HashAlgorithmName>] [-TimeStampServer <String>] [-Provider <AuthenticodeProvider>]
  [-WhatIf] [-Confirm] [<CommonParameters>]
 ```
 
@@ -24,7 +24,7 @@ Set-OpenAuthenticodeSignature [-Path] <String[]> -Certificate <X509Certificate2>
 ```
 Set-OpenAuthenticodeSignature [-Path] <String[]> -Key <KeyProvider> [-Encoding <Encoding>]
  [-HashAlgorithm <HashAlgorithmName>] [-IncludeOption <X509IncludeOption>] [-PassThru]
- [-Provider <AuthenticodeProvider>] [-TimeStampHashAlgorithm <HashAlgorithmName>] [-TimestampServer <String>]
+ [-TimeStampHashAlgorithm <HashAlgorithmName>] [-TimeStampServer <String>] [-Provider <AuthenticodeProvider>]
  [-WhatIf] [-Confirm] [<CommonParameters>]
 ```
 
@@ -32,7 +32,7 @@ Set-OpenAuthenticodeSignature [-Path] <String[]> -Key <KeyProvider> [-Encoding <
 ```
 Set-OpenAuthenticodeSignature -LiteralPath <String[]> -Certificate <X509Certificate2> [-Encoding <Encoding>]
  [-HashAlgorithm <HashAlgorithmName>] [-IncludeOption <X509IncludeOption>] [-PassThru]
- [-Provider <AuthenticodeProvider>] [-TimeStampHashAlgorithm <HashAlgorithmName>] [-TimestampServer <String>]
+ [-TimeStampHashAlgorithm <HashAlgorithmName>] [-TimeStampServer <String>] [-Provider <AuthenticodeProvider>]
  [-WhatIf] [-Confirm] [<CommonParameters>]
 ```
 
@@ -40,7 +40,7 @@ Set-OpenAuthenticodeSignature -LiteralPath <String[]> -Certificate <X509Certific
 ```
 Set-OpenAuthenticodeSignature -LiteralPath <String[]> -Key <KeyProvider> [-Encoding <Encoding>]
  [-HashAlgorithm <HashAlgorithmName>] [-IncludeOption <X509IncludeOption>] [-PassThru]
- [-Provider <AuthenticodeProvider>] [-TimeStampHashAlgorithm <HashAlgorithmName>] [-TimestampServer <String>]
+ [-TimeStampHashAlgorithm <HashAlgorithmName>] [-TimeStampServer <String>] [-Provider <AuthenticodeProvider>]
  [-WhatIf] [-Confirm] [<CommonParameters>]
 ```
 
@@ -263,6 +263,7 @@ Valid providers are:
 
 * `NotSpecified` - Uses the file extension to find the provider
 * `PowerShell` - Uses the PowerShell script Authenticode provider
+* `PEBinary` - Windows `.exe`, `.dll` files, including cross platform dotnet assemblies
 
 ```yaml
 Type: AuthenticodeProvider
@@ -292,7 +293,7 @@ Accept pipeline input: False
 Accept wildcard characters: False
 ```
 
-### -TimestampServer
+### -TimeStampServer
 The timestamp server used to counter sign the Authenticode signature.
 The time stamp represents the exact time the certificate was added to the file.
 A time stamp prevents the signature from being invalidated once the certificate has expired.
