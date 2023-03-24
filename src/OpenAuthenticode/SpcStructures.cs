@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Formats.Asn1;
 using System.Security.Cryptography;
-using System.Text;
 
 namespace OpenAuthenticode;
 
@@ -128,19 +127,6 @@ internal sealed record SpcIndirectData(Oid DataType, byte[]? Data, Oid DigestAlg
         return writer.Encode();
     }
 
-    public static HashAlgorithm HashAlgorithmFromOid(Oid oid)
-    {
-        HashAlgorithmName algo = HashAlgorithmName.FromOid(oid.Value ?? "");
-        return algo.Name switch
-        {
-            "SHA1" => SHA1.Create(),
-            "SHA256" => SHA256.Create(),
-            "SHA384" => SHA384.Create(),
-            "SHA512" => SHA512.Create(),
-            _ => throw new NotImplementedException($"Unknown digest algorithm {algo.Name}"),
-        };
-    }
-
     public static Oid OidFromHashAlgorithm(HashAlgorithmName algorithm) => algorithm.Name switch
     {
         "SHA1" => new Oid("1.3.14.3.2.26"),
@@ -149,6 +135,95 @@ internal sealed record SpcIndirectData(Oid DataType, byte[]? Data, Oid DigestAlg
         "SHA512" => new Oid("2.16.840.1.101.3.4.2.3"),
         _ => throw new NotImplementedException($"Unknown hash algorithm {algorithm.Name}"),
     };
+}
+
+/// <summary>
+/// PE Image Data flags.
+/// </summary>
+internal enum SpcPeImageFlags
+{
+    IncludeResources = 0,
+    IncludeDebugInfo = 1,
+    includeImportAddressTable = 2,
+}
+
+/// <summary>
+/// PE image metadata.
+/// </summary>
+/// <param name="Flags">Image data flags</param>
+/// <param name="File">Software publisher information.</param>
+internal sealed record SpcPeImageData(SpcPeImageFlags Flags, SpcLink File)
+{
+    public static readonly Oid OID = new("1.3.6.1.4.1.311.2.1.15", "SPC_PE_IMAGE_DATAOBJ");
+
+    /*
+    SpcPeImageData ::= SEQUENCE {
+        flags                   SpcPeImageFlags DEFAULT { includeResources },
+        file                    SpcLink
+    } --#public--
+
+    SpcPeImageFlags ::= BIT STRING {
+        includeResources            (0),
+        includeDebugInfo            (1),
+        includeImportAddressTable   (2)
+    }
+    */
+
+    public static SpcPeImageData Parse(ReadOnlySpan<byte> data)
+    {
+        AsnEncodingRules rules = AsnEncodingRules.DER;
+
+        AsnDecoder.ReadSequence(data, rules, out var offset, out var length, out var consumed);
+        ReadOnlySpan<byte> dataSequence = data.Slice(offset, length);
+        data = data[consumed..];
+
+        byte[] rawFlags = AsnDecoder.ReadBitString(dataSequence, rules, out var _, out consumed);
+        SpcPeImageFlags flags = SpcPeImageFlags.IncludeResources;
+        if (rawFlags.Length > 0)
+        {
+            flags = rawFlags[0] switch
+            {
+                0 => SpcPeImageFlags.IncludeResources,
+                1 => SpcPeImageFlags.IncludeDebugInfo,
+                2 => SpcPeImageFlags.includeImportAddressTable,
+                _ => throw new NotImplementedException($"Unknown flags {rawFlags[0]}"),
+            };
+        }
+        dataSequence = dataSequence[consumed..];
+
+        // While the specs do not show this, the SpcLink file entry is tagged
+        // as 0. Try and handle both scenarios.
+        Asn1Tag fileTag = AsnDecoder.ReadEncodedValue(dataSequence, rules, out offset, out length, out consumed);
+        if (fileTag.TagClass == TagClass.ContextSpecific && fileTag.TagValue == 0)
+        {
+            dataSequence = dataSequence.Slice(offset, length);
+        }
+        SpcLink file = SpcLink.Parse(dataSequence);
+
+        return new(flags, file);
+    }
+
+    public byte[] GetBytes()
+    {
+        AsnWriter writer = new(AsnEncodingRules.DER);
+        using (var dataContent = writer.PushSequence())
+        {
+            byte[] rawFlags = Array.Empty<byte>();
+            if (Flags != SpcPeImageFlags.IncludeResources)
+            {
+                rawFlags = new[] { (byte)Flags };
+            }
+            writer.WriteBitString(rawFlags);
+
+            Asn1Tag fileTag = new(TagClass.ContextSpecific, 0, true);
+            using (var fileSequence = writer.PushSequence(fileTag))
+            {
+                writer.WriteEncodedValue(File.GetBytes());
+            }
+        }
+
+        return writer.Encode();
+    }
 }
 
 /// <summary>
@@ -216,7 +291,7 @@ internal sealed record SpcSipInfo(int Version, Guid Identifier)
 /// </summary>
 /// <param name="ProgramName">The program name</param>
 /// <param name="MoreInfo">More info/URL of the publisher</param>
-internal sealed record SpcSpOpusInfo(string? ProgramName, string? MoreInfo)
+internal sealed record SpcSpOpusInfo(SpcString? ProgramName, SpcLink? MoreInfo)
 {
     public static readonly Oid OID = new("1.3.6.1.4.1.311.2.1.12", "SPC_SP_OPUS_INFO_OBJID");
 
@@ -234,8 +309,8 @@ internal sealed record SpcSpOpusInfo(string? ProgramName, string? MoreInfo)
         AsnDecoder.ReadSequence(data, rules, out var offset, out var length, out var consumed);
         data = data.Slice(offset, length);
 
-        string? programName = null;
-        string? moreInfo = null;
+        SpcString? programName = null;
+        SpcLink? moreInfo = null;
         while (data.Length > 0)
         {
             Asn1Tag tag = AsnDecoder.ReadEncodedValue(data, rules, out offset, out length, out consumed);
@@ -246,11 +321,11 @@ internal sealed record SpcSpOpusInfo(string? ProgramName, string? MoreInfo)
             {
                 if (tag.TagValue == 0)
                 {
-                    programName = ParseSpcString(tagData);
+                    programName = SpcString.Parse(tagData);
                 }
                 else if (tag.TagValue == 1)
                 {
-                    moreInfo = ParseSpcLink(tagData);
+                    moreInfo = SpcLink.Parse(tagData);
                 }
             }
         }
@@ -263,51 +338,25 @@ internal sealed record SpcSpOpusInfo(string? ProgramName, string? MoreInfo)
         AsnWriter writer = new(AsnEncodingRules.DER);
         using (var dataContent = writer.PushSequence())
         {
+            if (ProgramName != null)
+            {
+                Asn1Tag valueTag = new Asn1Tag(TagClass.ContextSpecific, 0, true);
+                using (var valueSeq = writer.PushSequence(valueTag))
+                {
+                    writer.WriteEncodedValue(ProgramName.GetBytes());
+                }
+            }
+            if (MoreInfo != null)
+            {
+                Asn1Tag valueTag = new Asn1Tag(TagClass.ContextSpecific, 1, true);
+                using (var valueSeq = writer.PushSequence(valueTag))
+                {
+                    writer.WriteEncodedValue(MoreInfo.GetBytes());
+                }
+            }
         }
 
         return writer.Encode();
-    }
-
-    private static string ParseSpcString(ReadOnlySpan<byte> data)
-    {
-        /*
-            SpcString ::= CHOICE {
-                unicode                 [0] IMPLICIT BMPSTRING,
-                ascii                   [1] IMPLICIT IA5STRING
-            }
-        */
-        AsnEncodingRules rules = AsnEncodingRules.DER;
-        Asn1Tag tag = AsnDecoder.ReadEncodedValue(data, rules, out var offset, out var length, out var consumed);
-        data = data.Slice(offset, length);
-
-        return tag.TagValue switch
-        {
-            0 => Encoding.Unicode.GetString(data),
-            1 => Encoding.ASCII.GetString(data),
-            _ => throw new NotImplementedException($"SpcString with unknown choice {tag}"),
-        };
-    }
-
-    private static string ParseSpcLink(ReadOnlySpan<byte> data)
-    {
-        /*
-            SpcLink ::= CHOICE {
-                url                     [0] IMPLICIT IA5STRING,
-                moniker                 [1] IMPLICIT SpcSerializedObject,
-                file                    [2] EXPLICIT SpcString
-            } --#public--
-        */
-        AsnEncodingRules rules = AsnEncodingRules.DER;
-        Asn1Tag tag = AsnDecoder.ReadEncodedValue(data, rules, out var offset, out var length, out var consumed);
-        data = data.Slice(offset, length);
-
-        return tag.TagValue switch
-        {
-            0 => Encoding.ASCII.GetString(data),
-            // 1 => NotImplemented
-            2 => ParseSpcString(data),
-            _ => throw new NotImplementedException($"SpcLink with unknown choice {tag}"),
-        };
     }
 }
 
@@ -347,6 +396,180 @@ internal sealed record SpcStatementType(Oid[] Id)
             {
                 writer.WriteObjectIdentifier(o.Value ?? "");
             }
+        }
+
+        return writer.Encode();
+    }
+}
+
+/// <summary>
+/// Describes the software publisher. Most modern signers set File to an empty
+/// unicode string.
+/// </summary>
+/// <param name="Url">The publisher URL</param>
+/// <param name="Moniker">Specialised data</param>
+/// <param name="File">The file name</param>
+internal sealed record SpcLink(string? Url = null, SpcSerializedObject? Moniker = null, SpcString? File = null)
+{
+    /*
+    SpcLink ::= CHOICE {
+        url                     [0] IMPLICIT IA5STRING,
+        moniker                 [1] IMPLICIT SpcSerializedObject,
+        file                    [2] EXPLICIT SpcString
+    } --#public--
+    */
+
+    public static SpcLink Parse(ReadOnlySpan<byte> data)
+    {
+        AsnEncodingRules rules = AsnEncodingRules.DER;
+
+        string? url = null;
+        SpcSerializedObject? moniker = null;
+        SpcString? file = null;
+        Asn1Tag tag = AsnDecoder.ReadEncodedValue(data, rules, out var offset, out var length, out var consumed);
+        if (tag.TagValue == 0)
+        {
+            url = AsnDecoder.ReadCharacterString(data, rules, UniversalTagNumber.IA5String, out consumed, tag);
+        }
+        else if (tag.TagValue == 1)
+        {
+            moniker = SpcSerializedObject.Parse(data.Slice(offset, length), expectedTag: tag);
+        }
+        else if (tag.TagValue == 2)
+        {
+            file = SpcString.Parse(data.Slice(offset, length));
+        }
+        else
+        {
+            throw new NotImplementedException($"SpcLink with unknown choice {tag}");
+        }
+
+        return new(url, moniker, file);
+    }
+
+    public byte[] GetBytes()
+    {
+        AsnWriter writer = new(AsnEncodingRules.DER);
+
+        if (Url != null)
+        {
+            writer.WriteCharacterString(UniversalTagNumber.IA5String, Url,
+                new Asn1Tag(TagClass.ContextSpecific, 0));
+        }
+        else if (Moniker != null)
+        {
+            Asn1Tag monikerTag = new Asn1Tag(TagClass.ContextSpecific, 1, true);
+            writer.WriteEncodedValue(Moniker.GetBytes(monikerTag));
+        }
+        else if (File != null)
+        {
+            Asn1Tag fileTag = new Asn1Tag(TagClass.ContextSpecific, 2, true);
+            using (var fileSeq = writer.PushSequence(fileTag))
+            {
+                writer.WriteEncodedValue(File.GetBytes());
+            }
+        }
+
+        return writer.Encode();
+    }
+}
+
+/// <summary>
+/// Special serialized info.
+/// </summary>
+/// <param name="ClassId">An identifier of the serialized object</param>
+/// <param name="Data">The raw data.</param>
+internal sealed record SpcSerializedObject(Guid ClassId, byte[] Data)
+{
+    /*
+    SpcSerializedObject ::= SEQUENCE {
+        classId             SpcUuid,
+        serializedData      OCTETSTRING
+    }
+
+    SpcUuid ::= OCTETSTRING
+    */
+
+    public static SpcSerializedObject Parse(ReadOnlySpan<byte> data, Asn1Tag? expectedTag = null)
+    {
+        AsnEncodingRules rules = AsnEncodingRules.DER;
+
+        AsnDecoder.ReadSequence(data, rules, out var offset, out var length, out var consumed,
+            expectedTag: expectedTag);
+        data = data.Slice(offset, length);
+
+        byte[] classId = AsnDecoder.ReadOctetString(data, rules, out consumed);
+        data = data[consumed..];
+
+        byte[] rawData = AsnDecoder.ReadOctetString(data, rules, out consumed);
+        data = data[consumed..];
+
+        return new(new Guid(classId), rawData);
+    }
+
+    public byte[] GetBytes(Asn1Tag? tag = null)
+    {
+        AsnWriter writer = new(AsnEncodingRules.DER);
+        using (var dataContent = writer.PushSequence(tag: tag))
+        {
+            writer.WriteOctetString(ClassId.ToByteArray());
+            writer.WriteOctetString(Data);
+        }
+
+        return writer.Encode();
+    }
+}
+
+/// <summary>
+/// A unicode or ascii string value.
+/// </summary>
+/// <param name="Unicode">A Unicode string</param>
+/// <param name="Ascii">An ASCII string</param>
+internal sealed record SpcString(string? Unicode = null, string? Ascii = null)
+{
+    /*
+    SpcString ::= CHOICE {
+        unicode                 [0] IMPLICIT BMPSTRING,
+        ascii                   [1] IMPLICIT IA5STRING
+    }
+    */
+
+    public static SpcString Parse(ReadOnlySpan<byte> data)
+    {
+        AsnEncodingRules rules = AsnEncodingRules.DER;
+
+        string? unicode = null;
+        string? ascii = null;
+        Asn1Tag tag = AsnDecoder.ReadEncodedValue(data, rules, out var offset, out var length, out var consumed);
+        if (tag.TagValue == 0)
+        {
+            unicode = AsnDecoder.ReadCharacterString(data, rules, UniversalTagNumber.BMPString, out consumed, tag);
+        }
+        else if (tag.TagValue == 1)
+        {
+            ascii = AsnDecoder.ReadCharacterString(data, rules, UniversalTagNumber.IA5String, out consumed, tag);
+        }
+        else
+        {
+            throw new NotImplementedException($"SpcString with unknown choice {tag}");
+        }
+
+        return new(unicode, ascii);
+    }
+
+    public byte[] GetBytes()
+    {
+        AsnWriter writer = new(AsnEncodingRules.DER);
+
+        if (Unicode != null)
+        {
+            writer.WriteCharacterString(UniversalTagNumber.BMPString, Unicode,
+                new Asn1Tag(TagClass.ContextSpecific, 0));
+        }
+        else if (Ascii != null)
+        {
+            writer.WriteCharacterString(UniversalTagNumber.IA5String, Ascii,
+                new Asn1Tag(TagClass.ContextSpecific, 1));
         }
 
         return writer.Encode();

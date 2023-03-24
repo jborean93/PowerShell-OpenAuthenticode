@@ -14,26 +14,26 @@ Gets information about the Authenticode signature for a file.
 
 ### Path (Default)
 ```
-Get-OpenAuthenticodeSignature [-Path] <String[]> [-Encoding <Encoding>] [-Provider <AuthenticodeProvider>]
- [-SkipCertificateCheck] [-TrustStore <X509Certificate2Collection>] [<CommonParameters>]
+Get-OpenAuthenticodeSignature [-Path] <String[]> [-Encoding <Encoding>] [-SkipCertificateCheck]
+ [-TrustStore <X509Certificate2Collection>] [-Provider <AuthenticodeProvider>] [<CommonParameters>]
 ```
 
 ### LiteralPath
 ```
-Get-OpenAuthenticodeSignature -LiteralPath <String[]> [-Encoding <Encoding>] [-Provider <AuthenticodeProvider>]
- [-SkipCertificateCheck] [-TrustStore <X509Certificate2Collection>] [<CommonParameters>]
+Get-OpenAuthenticodeSignature -LiteralPath <String[]> [-Encoding <Encoding>] [-SkipCertificateCheck]
+ [-TrustStore <X509Certificate2Collection>] [-Provider <AuthenticodeProvider>] [<CommonParameters>]
 ```
 
 ### Content
 ```
-Get-OpenAuthenticodeSignature -Content <String> [-Provider <AuthenticodeProvider>] [-SkipCertificateCheck]
- [-TrustStore <X509Certificate2Collection>] [<CommonParameters>]
+Get-OpenAuthenticodeSignature -Content <String> [-SkipCertificateCheck]
+ [-TrustStore <X509Certificate2Collection>] [-Provider <AuthenticodeProvider>] [<CommonParameters>]
 ```
 
 ### RawContent
 ```
-Get-OpenAuthenticodeSignature -RawContent <Byte[]> [-Encoding <Encoding>] [-Provider <AuthenticodeProvider>]
- [-SkipCertificateCheck] [-TrustStore <X509Certificate2Collection>] [<CommonParameters>]
+Get-OpenAuthenticodeSignature -RawContent <Byte[]> [-Encoding <Encoding>] [-SkipCertificateCheck]
+ [-TrustStore <X509Certificate2Collection>] [-Provider <AuthenticodeProvider>] [<CommonParameters>]
 ```
 
 ## DESCRIPTION
@@ -46,6 +46,9 @@ When using a file path that has no extension, an explicit `-Provider` must be sp
 
 It is also possible to provide a file to validate using the `-Content` and `-RawContent` which accepts a string and byte array respectively.
 The `-Content` value is useful for files that are read as string like PowerShell scripts rather than binary files like a `.dll`.
+
+If a file has multiple signatures embedded, each signature and their hash algorithm will be output as their own objects.
+For example a file signed with the SHA1 hash and SHA256 hash will output 2 objects.
 
 ## EXAMPLES
 
@@ -194,6 +197,7 @@ Valid providers are:
 
 * `NotSpecified` - Uses the file extension to find the provider
 * `PowerShell` - Uses the PowerShell script Authenticode provider
+* `PEBinary` - Windows `.exe`, `.dll` files, including cross platform dotnet assemblies
 
 ```yaml
 Type: AuthenticodeProvider

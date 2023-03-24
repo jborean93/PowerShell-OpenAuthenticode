@@ -61,6 +61,9 @@ internal static class ProviderFactory
 
     static ProviderFactory()
     {
+        RegisterProvider(AuthenticodeProvider.PEBinary,
+            PEBinaryProvider.FileExtensions,
+            PEBinaryProvider.Create);
         RegisterProvider(AuthenticodeProvider.PowerShell,
             PowerShellScriptProvider.FileExtensions,
             PowerShellScriptProvider.Create);
@@ -144,4 +147,5 @@ public enum AuthenticodeProvider
 {
     NotSpecified,
     PowerShell,
+    PEBinary,
 }

@@ -62,7 +62,7 @@ Describe "Get-OpenAuthenticodeAzKey" -Skip:(-not (Test-Available)) {
         Set-OpenAuthenticodeSignature @setParams
 
         $actual = Get-OpenAuthenticodeSignature -Path $scriptPath -SkipCertificateCheck
-        $actual.HashAlgorithmName | Should -Be $Name
+        $actual.HashAlgorithm | Should -Be $Name
         $actual.Certificate.GetKeyAlgorithm() | Should -Be "1.2.840.113549.1.1.1"
 
         If (Get-Command -Name Get-AuthenticodeSignature -ErrorAction Ignore) {

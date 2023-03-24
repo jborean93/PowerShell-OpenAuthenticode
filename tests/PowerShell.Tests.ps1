@@ -27,7 +27,7 @@ Describe "PowerShell Authenticode" {
         $actual = Get-OpenAuthenticodeSignature -Path $scriptPath @trustParams
         $actual | Should -BeOfType ([System.Security.Cryptography.Pkcs.SignedCms])
         $actual.Path | Should -Be $scriptPath.FullName
-        $actual.HashAlgorithmName | Should -Be SHA256
+        $actual.HashAlgorithm | Should -Be SHA256
         $actual.TimeStampInfo | Should -BeNullOrEmpty
         $actual.Certificate.Thumbprint | Should -Be $cert.Thumbprint
 
@@ -35,6 +35,50 @@ Describe "PowerShell Authenticode" {
             $actual = Get-AuthenticodeSignature -FilePath $scriptPath.FullName
             $actual.Status | Should -Not -Be HashMismatch
         }
+    }
+
+    It "Clears signed script" {
+        $scriptPath = New-Item -Path temp: -Name script.ps1 -Force -Value "Write-Host test`r`n"
+
+        $setParams = @{
+            Path = $scriptPath
+            Certificate = $cert
+        }
+        Set-OpenAuthenticodeSignature @setParams
+
+        Clear-OpenAuthenticodeSignature -Path $scriptPath
+
+        $actual = Get-OpenAuthenticodeSignature -Path $scriptPath @trustParams -ErrorAction SilentlyContinue -ErrorVariable err
+        $actual | Should -BeNullOrEmpty
+        $err.Count | Should -Be 1
+        [string]$err[0] | Should -Be "File '$($scriptPath.FullName)' does not contain an authenticode signature"
+    }
+
+    It "Clears signed script in -WhatIf" {
+        $scriptPath = New-Item -Path temp: -Name script.ps1 -Force -Value "Write-Host test`r`n"
+
+        $setParams = @{
+            Path = $scriptPath
+            Certificate = $cert
+        }
+        Set-OpenAuthenticodeSignature @setParams
+
+        Clear-OpenAuthenticodeSignature -Path $scriptPath -WhatIf
+
+        $actual = Get-OpenAuthenticodeSignature -Path $scriptPath @trustParams
+        $actual.HashAlgorithm | Should -Be SHA256
+        $actual.Certificates.Thumbprint | Should -Be $cert.Thumbprint
+    }
+
+    It "Clears unsigned script without errors" {
+        $scriptPath = New-Item -Path temp: -Name script.ps1 -Force -Value "Write-Host test`r`n"
+
+        Clear-OpenAuthenticodeSignature -Path $scriptPath
+
+        $actual = Get-OpenAuthenticodeSignature -Path $scriptPath @trustParams -ErrorAction SilentlyContinue -ErrorVariable err
+        $actual | Should -BeNullOrEmpty
+        $err.Count | Should -Be 1
+        [string]$err[0] | Should -Be "File '$($scriptPath.FullName)' does not contain an authenticode signature"
     }
 
     It "Detects a tampered file" {
@@ -99,7 +143,7 @@ Describe "PowerShell Authenticode" {
         $actual = Get-OpenAuthenticodeSignature -Path $scriptPath -SkipCertificateCheck
         $actual | Should -BeOfType ([System.Security.Cryptography.Pkcs.SignedCms])
         $actual.Path | Should -Be $scriptPath.FullName
-        $actual.HashAlgorithmName | Should -Be SHA256
+        $actual.HashAlgorithm | Should -Be SHA256
         $actual.TimeStampInfo | Should -BeNullOrEmpty
         $actual.Certificate.Thumbprint | Should -Be $cert.Thumbprint
 
@@ -121,7 +165,7 @@ Describe "PowerShell Authenticode" {
 
         $actual | Should -BeOfType ([System.Security.Cryptography.Pkcs.SignedCms])
         $actual.Path | Should -Be $scriptPath.FullName
-        $actual.HashAlgorithmName | Should -Be SHA256
+        $actual.HashAlgorithm | Should -Be SHA256
         $actual.TimeStampInfo | Should -BeNullOrEmpty
         $actual.Certificate.Thumbprint | Should -Be $cert.Thumbprint
 
@@ -169,7 +213,7 @@ Describe "PowerShell Authenticode" {
         $actual = Get-OpenAuthenticodeSignature -Path $scriptPath @trustParams
         $actual | Should -BeOfType ([System.Security.Cryptography.Pkcs.SignedCms])
         $actual.Path | Should -Be $scriptPath.FullName
-        $actual.HashAlgorithmName | Should -Be $Name
+        $actual.HashAlgorithm | Should -Be $Name
         $actual.TimeStampInfo | Should -BeNullOrEmpty
         $actual.Certificate.Thumbprint | Should -Be $cert.Thumbprint
 
@@ -194,7 +238,7 @@ Describe "PowerShell Authenticode" {
         $actual = Get-OpenAuthenticodeSignature -Path $scriptPath @trustParams
         $actual | Should -BeOfType ([System.Security.Cryptography.Pkcs.SignedCms])
         $actual.Path | Should -Be $scriptPath.FullName
-        $actual.HashAlgorithmName | Should -Be SHA384
+        $actual.HashAlgorithm | Should -Be SHA384
         $actual.TimeStampInfo | Should -BeOfType ([OpenAuthenticode.CounterSignature])
         $actual.TimeStampInfo.Certificate | Should -Not -BeNullOrEmpty
         $actual.TimeStampInfo.HashAlgorithm | Should -Be SHA384
@@ -229,7 +273,7 @@ Describe "PowerShell Authenticode" {
         $actual = Get-OpenAuthenticodeSignature -Path $scriptPath @trustParams
         $actual | Should -BeOfType ([System.Security.Cryptography.Pkcs.SignedCms])
         $actual.Path | Should -Be $scriptPath.FullName
-        $actual.HashAlgorithmName | Should -Be SHA256
+        $actual.HashAlgorithm | Should -Be SHA256
         $actual.TimeStampInfo | Should -BeOfType ([OpenAuthenticode.CounterSignature])
         $actual.TimeStampInfo.Certificate | Should -Not -BeNullOrEmpty
         $actual.TimeStampInfo.HashAlgorithm | Should -Be $Name
@@ -255,7 +299,7 @@ Describe "PowerShell Authenticode" {
 
         $actual | Should -BeOfType ([System.Security.Cryptography.Pkcs.SignedCms])
         $actual.Path | Should -Be $scriptPath
-        $actual.HashAlgorithmName | Should -Be SHA256
+        $actual.HashAlgorithm | Should -Be SHA256
         $actual.TimeStampInfo | Should -BeOfType ([OpenAuthenticode.CounterSignature])
         $actual.TimeStampInfo.Certificate.SubjectName.Name | Should -Be "CN=DigiCert Timestamp 2022 - 2, O=DigiCert, C=US"
         $actual.TimeStampInfo.Certificate.Thumbprint | Should -Be "F387224D8633829235A994BCBD8F96E9FE1C7C73"
@@ -298,7 +342,7 @@ Describe "PowerShell Authenticode" {
 
         $actual | Should -BeOfType ([System.Security.Cryptography.Pkcs.SignedCms])
         $actual.Path | Should -Be $scriptPath
-        $actual.HashAlgorithmName | Should -Be SHA256
+        $actual.HashAlgorithm | Should -Be SHA256
         $actual.TimeStampInfo | Should -BeOfType ([OpenAuthenticode.CounterSignature])
         $actual.TimeStampInfo.Certificate.SubjectName.Name | Should -Be "CN=DigiCert Timestamp 2022 - 2, O=DigiCert, C=US"
         $actual.TimeStampInfo.Certificate.Thumbprint | Should -Be "F387224D8633829235A994BCBD8F96E9FE1C7C73"
@@ -329,7 +373,7 @@ Describe "PowerShell Authenticode" {
         $actual = Get-OpenAuthenticodeSignature -Path $scriptPath -Encoding ANSI @trustParams
         $actual | Should -BeOfType ([System.Security.Cryptography.Pkcs.SignedCms])
         $actual.Path | Should -Be $scriptPath.FullName
-        $actual.HashAlgorithmName | Should -Be SHA256
+        $actual.HashAlgorithm | Should -Be SHA256
         $actual.TimeStampInfo | Should -BeNullOrEmpty
         $actual.Certificate.Thumbprint | Should -Be $cert.Thumbprint
 
@@ -356,7 +400,7 @@ Describe "PowerShell Authenticode" {
         $actual = Get-OpenAuthenticodeSignature -Path $scriptPath @trustParams
         $actual | Should -BeOfType ([System.Security.Cryptography.Pkcs.SignedCms])
         $actual.Path | Should -Be $scriptPath.FullName
-        $actual.HashAlgorithmName | Should -Be SHA256
+        $actual.HashAlgorithm | Should -Be SHA256
         $actual.TimeStampInfo | Should -BeNullOrEmpty
         $actual.Certificate.Thumbprint | Should -Be $cert.Thumbprint
 
@@ -383,7 +427,7 @@ Describe "PowerShell Authenticode" {
         $actual = Get-OpenAuthenticodeSignature -Path $scriptPath @trustParams
         $actual | Should -BeOfType ([System.Security.Cryptography.Pkcs.SignedCms])
         $actual.Path | Should -Be $scriptPath.FullName
-        $actual.HashAlgorithmName | Should -Be SHA256
+        $actual.HashAlgorithm | Should -Be SHA256
         $actual.TimeStampInfo | Should -BeNullOrEmpty
         $actual.Certificate.Thumbprint | Should -Be $cert.Thumbprint
 
@@ -408,7 +452,7 @@ Describe "PowerShell Authenticode" {
         $actual = Get-OpenAuthenticodeSignature -Path $scriptPath @trustParams
         $actual | Should -BeOfType ([System.Security.Cryptography.Pkcs.SignedCms])
         $actual.Path | Should -Be $scriptPath.FullName
-        $actual.HashAlgorithmName | Should -Be SHA256
+        $actual.HashAlgorithm | Should -Be SHA256
         $actual.TimeStampInfo | Should -BeNullOrEmpty
         $actual.Certificate.Thumbprint | Should -Be $cert.Thumbprint
 
@@ -433,7 +477,7 @@ Describe "PowerShell Authenticode" {
         $actual = Get-OpenAuthenticodeSignature -Path $scriptPath @trustParams
         $actual | Should -BeOfType ([System.Security.Cryptography.Pkcs.SignedCms])
         $actual.Path | Should -Be $scriptPath.FullName
-        $actual.HashAlgorithmName | Should -Be SHA256
+        $actual.HashAlgorithm | Should -Be SHA256
         $actual.TimeStampInfo | Should -BeNullOrEmpty
         $actual.Certificate.Thumbprint | Should -Be $cert.Thumbprint
 
@@ -457,7 +501,7 @@ Describe "PowerShell Authenticode" {
         $actual = Get-OpenAuthenticodeSignature -Path $scriptPath -Provider PowerShell @trustParams
         $actual | Should -BeOfType ([System.Security.Cryptography.Pkcs.SignedCms])
         $actual.Path | Should -Be $scriptPath.FullName
-        $actual.HashAlgorithmName | Should -Be SHA256
+        $actual.HashAlgorithm | Should -Be SHA256
         $actual.TimeStampInfo | Should -BeNullOrEmpty
         $actual.Certificate.Thumbprint | Should -Be $cert.Thumbprint
     }
@@ -476,7 +520,7 @@ Describe "PowerShell Authenticode" {
         $actual = Get-OpenAuthenticodeSignature -Path $scriptPath @trustParams
         $actual | Should -BeOfType ([System.Security.Cryptography.Pkcs.SignedCms])
         $actual.Path | Should -Be $scriptPath.FullName
-        $actual.HashAlgorithmName | Should -Be SHA256
+        $actual.HashAlgorithm | Should -Be SHA256
         $actual.TimeStampInfo | Should -BeNullOrEmpty
         $actual.Certificate.Thumbprint | Should -Be $cert.Thumbprint
 
@@ -508,7 +552,7 @@ Describe "PowerShell Authenticode" {
         $actual = Get-OpenAuthenticodeSignature -Path $scriptPath @trustParams
         $actual | Should -BeOfType ([System.Security.Cryptography.Pkcs.SignedCms])
         $actual.Path | Should -Be $scriptPath.FullName
-        $actual.HashAlgorithmName | Should -Be SHA256
+        $actual.HashAlgorithm | Should -Be SHA256
         $actual.TimeStampInfo | Should -BeNullOrEmpty
         $actual.Certificate.Thumbprint | Should -Be $cert.Thumbprint
 
@@ -531,7 +575,7 @@ Describe "PowerShell Authenticode" {
         $actual = Get-OpenAuthenticodeSignature -Content $content -Provider PowerShell @trustParams
         $actual | Should -BeOfType ([System.Security.Cryptography.Pkcs.SignedCms])
         $actual.Path | Should -BeNullOrEmpty
-        $actual.HashAlgorithmName | Should -Be SHA256
+        $actual.HashAlgorithm | Should -Be SHA256
         $actual.TimeStampInfo | Should -BeNullOrEmpty
         $actual.Certificate.Thumbprint | Should -Be $cert.Thumbprint
     }
@@ -552,7 +596,7 @@ Describe "PowerShell Authenticode" {
         $actual = Get-OpenAuthenticodeSignature -Content $content -Provider PowerShell @trustParams
         $actual | Should -BeOfType ([System.Security.Cryptography.Pkcs.SignedCms])
         $actual.Path | Should -BeNullOrEmpty
-        $actual.HashAlgorithmName | Should -Be SHA256
+        $actual.HashAlgorithm | Should -Be SHA256
         $actual.TimeStampInfo | Should -BeNullOrEmpty
         $actual.Certificate.Thumbprint | Should -Be $cert.Thumbprint
     }
@@ -570,7 +614,7 @@ Describe "PowerShell Authenticode" {
         $actual = Get-OpenAuthenticodeSignature -RawContent $content -Provider PowerShell @trustParams
         $actual | Should -BeOfType ([System.Security.Cryptography.Pkcs.SignedCms])
         $actual.Path | Should -BeNullOrEmpty
-        $actual.HashAlgorithmName | Should -Be SHA256
+        $actual.HashAlgorithm | Should -Be SHA256
         $actual.TimeStampInfo | Should -BeNullOrEmpty
         $actual.Certificate.Thumbprint | Should -Be $cert.Thumbprint
     }
@@ -590,7 +634,7 @@ Describe "PowerShell Authenticode" {
         $actual = Get-OpenAuthenticodeSignature -RawContent $content -Provider PowerShell @trustParams
         $actual | Should -BeOfType ([System.Security.Cryptography.Pkcs.SignedCms])
         $actual.Path | Should -BeNullOrEmpty
-        $actual.HashAlgorithmName | Should -Be SHA256
+        $actual.HashAlgorithm | Should -Be SHA256
         $actual.TimeStampInfo | Should -BeNullOrEmpty
         $actual.Certificate.Thumbprint | Should -Be $cert.Thumbprint
     }

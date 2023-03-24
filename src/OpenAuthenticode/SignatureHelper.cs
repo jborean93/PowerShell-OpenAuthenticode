@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Linq;
@@ -12,6 +13,7 @@ namespace OpenAuthenticode;
 
 public static class SignatureHelper
 {
+    private const string OID_NESTED_SIGNATURE = "1.3.6.1.4.1.311.2.4.1";
     private const string MS_COUNTERSIGN_OID = "1.3.6.1.4.1.311.3.3.1";
 
     // This is used by the ETS type
@@ -64,38 +66,32 @@ public static class SignatureHelper
             token.Timestamp.UtcDateTime);
     }
 
-    internal static SignedCms? GetFileSignature(IAuthenticodeProvider provider, bool skipCertificateCheck,
+    internal static IEnumerable<SignedCms> GetFileSignature(IAuthenticodeProvider provider, bool skipCertificateCheck,
         X509Certificate2Collection? trustStore)
     {
         byte[] signatureData = provider.Signature;
         if (signatureData.Length == 0)
         {
-            return null;
+            yield break;
         }
 
-        SignedCms signInfo = new SignedCms();
-        signInfo.Decode(signatureData);
+        Queue<byte[]> signatureQueue = new();
+        signatureQueue.Enqueue(signatureData);
 
-        // The builtin CheckSignature does not allowed expired certs even if
-        // they were counter signed during their validity, this uses an
-        // extension method to account for this scenario.
-        CounterSignature? counterSignature = GetCounterSignature(signInfo);
-        CheckSignature(signInfo.SignerInfos, skipCertificateCheck, counterSignature, trustStore);
-
-        if (signInfo.ContentInfo.ContentType.Value != SpcIndirectData.OID.Value)
+        while (signatureQueue.Count > 0)
         {
-            throw new ArgumentException($"Unknown ContentType {signInfo.ContentInfo.ContentType.Value}");
-        }
-        SpcIndirectData dataContent = SpcIndirectData.Parse(signInfo.ContentInfo.Content);
-        SpcIndirectData actualContent = provider.HashData(dataContent.DigestAlgorithm);
+            byte[] data = signatureQueue.Dequeue();
+            SignedCms signInfo = DecodeCms(data, provider, skipCertificateCheck, trustStore);
+            yield return signInfo;
 
-        if (!Enumerable.SequenceEqual(actualContent.Digest, dataContent.Digest))
-        {
-            string msg = $"Signature mismatch: {Convert.ToHexString(actualContent.Digest)} != {Convert.ToHexString(dataContent.Digest)}";
-            throw new CryptographicException(msg);
+            foreach (CryptographicAttributeObject attr in signInfo.SignerInfos[0].UnsignedAttributes)
+            {
+                if (attr.Oid.Value == OID_NESTED_SIGNATURE)
+                {
+                    signatureQueue.Enqueue(attr.Values[0].RawData);
+                }
+            }
         }
-
-        return signInfo;
     }
 
     internal static SignedCms SetFileSignature(IAuthenticodeProvider provider, X509Certificate2 cert,
@@ -111,7 +107,7 @@ public static class SignatureHelper
         };
         provider.AddAttributes(signer);
 
-        ContentInfo ci = new(new Oid(SpcIndirectData.OID), dataContent.GetBytes());
+        ContentInfo ci = new(SpcIndirectData.OID, dataContent.GetBytes());
         SignedCms signInfo = new(ci, false);
         signInfo.ComputeSignature(signer, true);
 
@@ -137,6 +133,34 @@ public static class SignatureHelper
         return signedPSObject;
     }
 
+    private static SignedCms DecodeCms(ReadOnlySpan<byte> data, IAuthenticodeProvider provider,
+        bool skipCertificateCheck, X509Certificate2Collection? trustStore)
+    {
+        SignedCms signInfo = new SignedCms();
+        signInfo.Decode(data);
+
+        // The builtin CheckSignature does not allowed expired certs even if
+        // they were counter signed during their validity, this uses an
+        // extension method to account for this scenario.
+        CounterSignature? counterSignature = GetCounterSignature(signInfo);
+        CheckSignature(signInfo.SignerInfos, skipCertificateCheck, counterSignature, trustStore);
+
+        if (signInfo.ContentInfo.ContentType.Value != SpcIndirectData.OID.Value)
+        {
+            throw new ArgumentException($"Unknown ContentType {signInfo.ContentInfo.ContentType.Value}");
+        }
+        SpcIndirectData dataContent = SpcIndirectData.Parse(signInfo.ContentInfo.Content);
+        SpcIndirectData actualContent = provider.HashData(dataContent.DigestAlgorithm);
+
+        if (!Enumerable.SequenceEqual(actualContent.Digest, dataContent.Digest))
+        {
+            string msg = $"Signature mismatch: {Convert.ToHexString(actualContent.Digest)} != {Convert.ToHexString(dataContent.Digest)}";
+            throw new CryptographicException(msg);
+        }
+
+        return signInfo;
+    }
+
     private static void CheckSignature(SignerInfoCollection signers, bool verifySignatureOnly,
         CounterSignature? counterSignature, X509Certificate2Collection? trustStore)
     {
@@ -152,7 +176,7 @@ public static class SignatureHelper
             SignerInfoCollection counterSigners = signer.CounterSignerInfos;
             if (counterSigners.Count > 0)
             {
-                CheckSignature(counterSigners, verifySignatureOnly, null, trustStore);
+                CheckSignature(counterSigners, verifySignatureOnly, counterSignature, trustStore);
             }
         }
     }

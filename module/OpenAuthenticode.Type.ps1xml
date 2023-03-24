@@ -14,7 +14,7 @@
         </GetScriptBlock>
       </ScriptProperty>
       <ScriptProperty>
-        <Name>HashAlgorithmName</Name>
+        <Name>HashAlgorithm</Name>
         <GetScriptBlock>
           [System.Security.Cryptography.HashAlgorithmName]::FromOid($this.SignerInfos[0].DigestAlgorithm.Value)
         </GetScriptBlock>
