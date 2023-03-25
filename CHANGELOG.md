@@ -3,6 +3,7 @@
 ## v0.2.0 - TBD
 
 * Added support for `.dll` and `.exe` files through the `PEBinary` provider
+* Fixed up support for PowerShell XML signatures for `.psc1`, `.ps1xml`
 * Output nested signatures when a file has been signed with multiple hash algorithms
 * Renamed output property `HashAlgorithmName` to just `HashAlgorithm`
 * Added the following cmdlets
