@@ -197,6 +197,7 @@ Valid providers are:
 
 * `NotSpecified` - Uses the file extension to find the provider
 * `PowerShell` - Uses the PowerShell script Authenticode provider
+* `PowerShellXml` - Uses the PowerShell script Authenticode provider for XML files like `.psc1` and `.ps1xml`
 * `PEBinary` - Windows `.exe`, `.dll` files, including cross platform dotnet assemblies
 
 ```yaml

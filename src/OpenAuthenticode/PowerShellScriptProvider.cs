@@ -6,31 +6,24 @@ using System.Text;
 
 namespace OpenAuthenticode;
 
-/// <summary>
-/// Authenticode providers for PowerShell script files. This includes files
-/// with the extensions <c>.ps1</c>, <c>.psc1</c>, <c>.psd1</c>, <c>.psm1</c>,
-/// and <c>.ps1</c>.
-/// </summary>
-internal class PowerShellScriptProvider : IAuthenticodeProvider
+internal abstract class PowerShellProvider : IAuthenticodeProvider
 {
     private readonly Guid _pwshSip = new("603bcc1f-4b59-4e08-b724-d2c6297ef351");
-    private const string _startBlock = "# SIG # Begin signature block";
-    private const string _endBlock = "# SIG # End signature block";
+    protected const string _startSig = "SIG # Begin signature block";
+    protected const string _endSig = "SIG # End signature block";
 
     private byte[] _content;
     private Encoding _fileEncoding;
 
-    public AuthenticodeProvider Provider => AuthenticodeProvider.PowerShell;
+    public byte[] Signature { get; set; }
 
-    internal static string[] FileExtensions => new[] { ".ps1", ".psc1", ".psd1", ".psm1", ".ps1xml" };
+    protected abstract string StartComment { get; }
 
-    /// <summary>
-    /// Factory to create the PowerShellScriptProvider.
-    /// </summary>
-    /// <param name="data">The raw script bytes to manage</param>
-    /// <param name="fileEncoding">Encoding hint of the data provided</param>
-    /// <returns>The PowerShellScriptProvider></returns>
-    public static PowerShellScriptProvider Create(byte[] data, Encoding? fileEncoding)
+    protected abstract string EndComment { get; }
+
+    public abstract AuthenticodeProvider Provider { get; }
+
+    protected PowerShellProvider(byte[] data, Encoding? fileEncoding)
     {
         if (fileEncoding == null)
         {
@@ -48,28 +41,32 @@ internal class PowerShellScriptProvider : IAuthenticodeProvider
         string scriptText = fileEncoding.GetString(data);
         ReadOnlySpan<char> scriptData = new(scriptText.ToCharArray());
 
-        int signatureIdx = scriptData.IndexOf(new ReadOnlySpan<char>($"\r\n{_startBlock}".ToCharArray()));
+        string startSig = $"{StartComment}{_startSig}{EndComment}";
+        string endSig = $"{StartComment}{_endSig}{EndComment}";
+
+        int signatureIdx = scriptData.IndexOf(new ReadOnlySpan<char>($"\r\n{startSig}".ToCharArray()));
 
         byte[] hashableData;
-        byte[] signature = Array.Empty<byte>();
+        Signature = Array.Empty<byte>();
         if (signatureIdx != -1)
         {
             ReadOnlySpan<char> scriptContents = scriptData[..signatureIdx];
             hashableData = Encoding.Unicode.GetBytes(scriptContents.ToArray());
 
-            ReadOnlySpan<char> signatureBlock = scriptData[(signatureIdx + _startBlock.Length + 4)..];
-            int endSignatureIdx = signatureBlock.IndexOf(new ReadOnlySpan<char>($"\r\n{_endBlock}".ToCharArray()));
-            if (IsValidEndBlock(signatureBlock, endSignatureIdx))
+            ReadOnlySpan<char> signatureBlock = scriptData[(signatureIdx + startSig.Length + 4)..];
+            int endSignatureIdx = signatureBlock.IndexOf(new ReadOnlySpan<char>($"\r\n{endSig}".ToCharArray()));
+            if (IsValidEndBlock(signatureBlock, endSignatureIdx, endSig.Length))
             {
                 signatureBlock = signatureBlock[..endSignatureIdx];
 
                 StringBuilder base64Signature = new();
                 foreach (ReadOnlySpan<char> line in signatureBlock.EnumerateLines())
                 {
-                    base64Signature.Append(line[2..]);
+                    ReadOnlySpan<char> b64Line = line[StartComment.Length..(line.Length - EndComment.Length)];
+                    base64Signature.Append(b64Line);
                 }
 
-                signature = Convert.FromBase64String(base64Signature.ToString());
+                Signature = Convert.FromBase64String(base64Signature.ToString());
             }
         }
         else
@@ -77,15 +74,7 @@ internal class PowerShellScriptProvider : IAuthenticodeProvider
             hashableData = Encoding.Unicode.GetBytes(scriptText);
         }
 
-        return new PowerShellScriptProvider(hashableData, signature, fileEncoding);
-    }
-
-    public byte[] Signature { get; set; }
-
-    private PowerShellScriptProvider(byte[] content, byte[] signature, Encoding fileEncoding)
-    {
-        Signature = signature;
-        _content = content;
+        _content = hashableData;
         _fileEncoding = fileEncoding;
     }
 
@@ -126,16 +115,17 @@ internal class PowerShellScriptProvider : IAuthenticodeProvider
         if (Signature.Length > 0)
         {
             StringBuilder signatureContent = new();
-            signatureContent.Append($"\r\n{_startBlock}\r\n");
+            signatureContent.Append($"\r\n{StartComment}{_startSig}{EndComment}\r\n");
             ReadOnlySpan<char> b64Sig = new(Convert.ToBase64String(Signature).ToCharArray());
             while (b64Sig.Length > 0)
             {
                 int lineLength = Math.Min(b64Sig.Length, 64);
-                signatureContent.AppendFormat("# {0}\r\n", b64Sig[..lineLength].ToString());
+                signatureContent.AppendFormat("{0}{1}{2}\r\n", StartComment, b64Sig[..lineLength].ToString(),
+                    EndComment);
                 b64Sig = b64Sig[lineLength..];
             }
 
-            signatureContent.Append($"{_endBlock}\r\n");
+            signatureContent.Append($"{StartComment}{_endSig}{EndComment}\r\n");
             content += signatureContent.ToString();
         }
 
@@ -144,7 +134,7 @@ internal class PowerShellScriptProvider : IAuthenticodeProvider
         File.WriteAllText(path, content, new BOMLessEncoding(_fileEncoding));
     }
 
-    private static bool IsValidEndBlock(ReadOnlySpan<char> block, int endIdx)
+    private static bool IsValidEndBlock(ReadOnlySpan<char> block, int endIdx, int endBlockLength)
     {
         // Ensures the end signature block is valid and that it is at the end
         // of the file with 1 or 2 newline chars (\r or \n). Authenticode on
@@ -156,9 +146,51 @@ internal class PowerShellScriptProvider : IAuthenticodeProvider
         }
 
         string[] validEndlineCandidates = new[] { "\r", "\n", "\r\n", "\n\r", "\r\r", "\n\n" };
-        string remaining = block.Slice(endIdx + _endBlock.Length + 2).ToString();
+        string remaining = block.Slice(endIdx + endBlockLength + 2).ToString();
         return Array.Exists(validEndlineCandidates, c => c == remaining);
     }
+}
+
+/// <summary>
+/// Authenticode providers for PowerShell script files. This includes files
+/// with the extensions <c>.ps1</c>, <c>.psd1</c>, and <c>.psm1</c>.
+/// </summary>
+internal class PowerShellScriptProvider : PowerShellProvider
+{
+    public override AuthenticodeProvider Provider => AuthenticodeProvider.PowerShell;
+
+    internal static string[] FileExtensions => new[] { ".ps1", ".psd1", ".psm1" };
+
+    protected override string StartComment => "# ";
+
+    protected override string EndComment => "";
+
+    public static PowerShellScriptProvider Create(byte[] data, Encoding? fileEncoding)
+        => new PowerShellScriptProvider(data, fileEncoding);
+
+    private PowerShellScriptProvider(byte[] data, Encoding? fileEncoding) : base(data, fileEncoding)
+    {}
+}
+
+/// <summary>
+/// Authenticode providers for PowerShell XML files. This includes files
+/// with the extensions <c>.psc1</c> and <c>.psm1xml</c>.
+/// </summary>
+internal class PowerShellXmlProvider : PowerShellProvider
+{
+    public override AuthenticodeProvider Provider => AuthenticodeProvider.PowerShellXml;
+
+    internal static string[] FileExtensions => new[] { ".psc1", ".ps1xml" };
+
+    protected override string StartComment => "<!-- ";
+
+    protected override string EndComment => " -->";
+
+    public static PowerShellXmlProvider Create(byte[] data, Encoding? fileEncoding)
+        => new PowerShellXmlProvider(data, fileEncoding);
+
+    private PowerShellXmlProvider(byte[] data, Encoding? fileEncoding) : base(data, fileEncoding)
+    {}
 }
 
 public class BOMLessEncoding : Encoding
