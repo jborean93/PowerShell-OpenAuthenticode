@@ -6,7 +6,7 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/jborean93/PowerShell-OpenAuthenticode/blob/main/LICENSE)
 
 A cross platform Authenticode library for PowerShell signatures.
-Currently this only support PowerShell script files, `.ps1`, `.psd1`, `.psm1`, `.ps1xml`, etc files.
+Currently this support PowerShell script files, `.ps1`, `.psd1`, `.psm1`, `.ps1xml` as well as PE binarys `.dll`, and `.exe`.
 More format are planned for the future.
 
 See [OpenAuthenticode index](docs/en-US/OpenAuthenticode.md) for more details.
