@@ -1,6 +1,6 @@
 # Changelog for OpenAuthenticode
 
-## v0.2.0 - TBD
+## v0.2.0 - 2023-03-25
 
 * Added support for `.dll` and `.exe` files through the `PEBinary` provider
 * Fixed up support for PowerShell XML signatures for `.psc1`, `.ps1xml`
