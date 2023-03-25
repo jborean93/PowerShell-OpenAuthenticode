@@ -107,7 +107,6 @@ task Sign {
             )
         } |
         ForEach-Object -Process {
-            Write-Host $_.FullName
             Set-OpenAuthenticodeSignature -LiteralPath $_.FullName @signParams
         }
 }
