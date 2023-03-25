@@ -76,12 +76,15 @@ internal class PEBinaryProvider : IAuthenticodeProvider
         int certificateOffset = data.Length;
         int certificateLength = 0;
 
-        ReadOnlySpan<byte> certificateTable = data.AsSpan(
-            header.CertificateTableDirectory.RelativeVirtualAddress,
-            header.CertificateTableDirectory.Size);
+        DirectoryEntry certTable = header.CertificateTableDirectory;
         byte[] signature = Array.Empty<byte>();
-        if (certificateTable.Length > 12)
+        if (certTable.RelativeVirtualAddress > 0 &&
+            certTable.Size > 12 &&
+            (data.Length - certTable.RelativeVirtualAddress) >= certTable.Size)
         {
+            ReadOnlySpan<byte> certificateTable = data.AsSpan(
+                certTable.RelativeVirtualAddress,
+                certTable.Size);
             WIN_CERTIFICATE info = new(certificateTable);
             if (
                 (
@@ -209,17 +212,17 @@ internal class PEBinaryProvider : IAuthenticodeProvider
             // Ensure the PE binary is padded to a quadword offset before
             // adding the certificate info.
             int padding = (8 - ((int)fs.Length & 7)) & 7;
+            int signaturePadding = (8 - ((int)Signature.Length & 7)) & 7;
+
+            fs.Write(BitConverter.GetBytes((int)fs.Length + padding));
+            fs.Write(BitConverter.GetBytes(Signature.Length + signaturePadding + 8));
+
+            fs.Seek(0, SeekOrigin.End);
             if (padding > 0)
             {
                 fs.Write(new byte[padding]);
             }
 
-            int signaturePadding = (8 - ((int)Signature.Length & 7)) & 7;
-
-            fs.Write(BitConverter.GetBytes((int)fs.Length));
-            fs.Write(BitConverter.GetBytes(Signature.Length + signaturePadding + 8));
-
-            fs.Seek(0, SeekOrigin.End);
             fs.Write(BitConverter.GetBytes(Signature.Length + signaturePadding + 8));
             fs.Write(BitConverter.GetBytes((short)WIN_CERTIFICATE.WIN_CERT_REVISION_2_0));
             fs.Write(BitConverter.GetBytes((short)WIN_CERTIFICATE.WIN_CERT_TYPE_PKCS_SIGNED_DATA));
