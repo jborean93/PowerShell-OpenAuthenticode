@@ -95,7 +95,7 @@ internal class PEBinaryProvider : IAuthenticodeProvider
                 throw new ArgumentException(msg);
             }
 
-            certificateOffset = header.CertificateTableDirectory.RelativeVirtualAddress + 8;
+            certificateOffset = header.CertificateTableDirectory.RelativeVirtualAddress;
             certificateLength = info.Length - 8;
             signature = info.Certificate.ToArray();
         }
@@ -163,7 +163,6 @@ internal class PEBinaryProvider : IAuthenticodeProvider
                 algo.AppendData(padding);
             }
 
-            // algo.TransformFinalBlock(_content, 0, 0);
             fileHash = algo.GetCurrentHash();
         }
 
@@ -212,7 +211,7 @@ internal class PEBinaryProvider : IAuthenticodeProvider
             int padding = (8 - ((int)fs.Length & 7)) & 7;
             if (padding > 0)
             {
-                fs.SetLength(_metadata.CertificateOffset + padding);
+                fs.Write(new byte[padding]);
             }
 
             int signaturePadding = (8 - ((int)Signature.Length & 7)) & 7;

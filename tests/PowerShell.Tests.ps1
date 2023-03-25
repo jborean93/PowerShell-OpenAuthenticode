@@ -37,6 +37,77 @@ Describe "PowerShell Authenticode" {
         }
     }
 
+    It "Signs and adds a signature" {
+        $scriptPath = New-Item -Path temp: -Name script.ps1 -Force -Value "Write-Host test`r`n"
+
+        $setParams = @{
+            Path = $scriptPath
+            Certificate = $cert
+        }
+        Add-OpenAuthenticodeSignature @setParams
+
+        $actual = Add-OpenAuthenticodeSignature @setParams -HashAlgorithm SHA384
+        $actual | Should -BeNullOrEmpty
+
+        $actual = Get-OpenAuthenticodeSignature -Path $scriptPath @trustParams
+        $actual.Count | Should -Be 2
+        $actual[0].HashAlgorithm | Should -Be SHA256
+        $actual[0].Certificate.Thumbprint | Should -Be $cert.Thumbprint
+        $actual[1].HashAlgorithm | Should -Be SHA384
+        $actual[1].Certificate.Thumbprint | Should -Be $cert.Thumbprint
+
+        $actual = Add-OpenAuthenticodeSignature @setParams -HashAlgorithm SHA512 -PassThru
+        $actual | Should -BeOfType ([System.Security.Cryptography.Pkcs.SignedCms])
+        $actual.Path | Should -Be $scriptPath.FullName
+        $actual.HashAlgorithm | Should -Be SHA512
+        $actual.TimeStampInfo | Should -BeNullOrEmpty
+        $actual.Certificate.Thumbprint | Should -Be $cert.Thumbprint
+
+        $actual = Get-OpenAuthenticodeSignature -Path $scriptPath @trustParams
+        $actual.Count | Should -Be 3
+        $actual[0].HashAlgorithm | Should -Be SHA256
+        $actual[0].Certificate.Thumbprint | Should -Be $cert.Thumbprint
+        $actual[1].HashAlgorithm | Should -Be SHA384
+        $actual[1].Certificate.Thumbprint | Should -Be $cert.Thumbprint
+        $actual[2].HashAlgorithm | Should -Be SHA512
+        $actual[2].Certificate.Thumbprint | Should -Be $cert.Thumbprint
+
+        If (Get-Command -Name Get-AuthenticodeSignature -ErrorAction Ignore) {
+            $actual = Get-AuthenticodeSignature -FilePath $scriptPath.FullName
+            $actual.Status | Should -Not -Be HashMismatch
+        }
+    }
+
+    It "Signs and adds a signature with a timestamp" {
+        $scriptPath = New-Item -Path temp: -Name script.ps1 -Force -Value "Write-Host test`r`n"
+
+        $setParams = @{
+            Path = $scriptPath
+            Certificate = $cert
+            TimeStampServer = "http://timestamp.digicert.com"
+        }
+        Add-OpenAuthenticodeSignature @setParams
+        Add-OpenAuthenticodeSignature @setParams -TimestampHashAlgorithm SHA384
+
+        $actual = Get-OpenAuthenticodeSignature -Path $scriptPath @trustParams
+        $actual.Count | Should -Be 2
+        $actual[0].HashAlgorithm | Should -Be SHA256
+        $actual[0].TimeStampInfo | Should -BeOfType ([OpenAuthenticode.CounterSignature])
+        $actual[0].TimeStampInfo.Certificate | Should -Not -BeNullOrEmpty
+        $actual[0].TimeStampInfo.HashAlgorithm | Should -Be SHA256
+        $actual[0].Certificate.Thumbprint | Should -Be $cert.Thumbprint
+        $actual[1].HashAlgorithm | Should -Be SHA256
+        $actual[1].TimeStampInfo | Should -BeOfType ([OpenAuthenticode.CounterSignature])
+        $actual[1].TimeStampInfo.Certificate | Should -Not -BeNullOrEmpty
+        $actual[1].TimeStampInfo.HashAlgorithm | Should -Be SHA384
+        $actual[1].Certificate.Thumbprint | Should -Be $cert.Thumbprint
+
+        If (Get-Command -Name Get-AuthenticodeSignature -ErrorAction Ignore) {
+            $actual = Get-AuthenticodeSignature -FilePath $scriptPath.FullName
+            $actual.Status | Should -Not -Be HashMismatch
+        }
+    }
+
     It "Clears signed script" {
         $scriptPath = New-Item -Path temp: -Name script.ps1 -Force -Value "Write-Host test`r`n"
 

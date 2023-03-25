@@ -88,7 +88,10 @@ public static class SignatureHelper
             {
                 if (attr.Oid.Value == OID_NESTED_SIGNATURE)
                 {
-                    signatureQueue.Enqueue(attr.Values[0].RawData);
+                    foreach (AsnEncodedData sig in attr.Values)
+                    {
+                        signatureQueue.Enqueue(sig.RawData);
+                    }
                 }
             }
         }
@@ -96,7 +99,7 @@ public static class SignatureHelper
 
     internal static SignedCms SetFileSignature(IAuthenticodeProvider provider, X509Certificate2 cert,
         HashAlgorithmName hashAlgorithm, X509IncludeOption includeOption, AsymmetricAlgorithm? privateKey,
-        string? timestampServer, HashAlgorithmName? timestampAlgorithm)
+        string? timestampServer, HashAlgorithmName? timestampAlgorithm, bool append)
     {
         Oid digestOid = SpcIndirectData.OidFromHashAlgorithm(hashAlgorithm);
         SpcIndirectData dataContent = provider.HashData(digestOid);
@@ -119,7 +122,19 @@ public static class SignatureHelper
             ).ConfigureAwait(false).GetAwaiter().GetResult();
         }
 
-        provider.Signature = signInfo.Encode();
+        if (append && provider.Signature.Length > 0)
+        {
+            SignedCms existingSignature = new();
+            existingSignature.Decode(provider.Signature);
+            existingSignature.SignerInfos[0].AddUnsignedAttribute(
+                new(new Oid(OID_NESTED_SIGNATURE), signInfo.Encode()));
+
+            provider.Signature = existingSignature.Encode();
+        }
+        else
+        {
+            provider.Signature = signInfo.Encode();
+        }
 
         return signInfo;
     }
@@ -136,7 +151,7 @@ public static class SignatureHelper
     private static SignedCms DecodeCms(ReadOnlySpan<byte> data, IAuthenticodeProvider provider,
         bool skipCertificateCheck, X509Certificate2Collection? trustStore)
     {
-        SignedCms signInfo = new SignedCms();
+        SignedCms signInfo = new();
         signInfo.Decode(data);
 
         // The builtin CheckSignature does not allowed expired certs even if

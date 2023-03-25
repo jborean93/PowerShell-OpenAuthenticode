@@ -366,11 +366,7 @@ public sealed class GetOpenAuthenticodeSignature : OpenAuthenticodeSignatureBase
     }
 }
 
-[Cmdlet(VerbsCommon.Set, "OpenAuthenticodeSignature",
-    DefaultParameterSetName = "PathCertificate",
-    SupportsShouldProcess = true)]
-[OutputType(typeof(SignedCms))]
-public sealed class SetOpenAuthenticodeSignature : OpenAuthenticodeSignatureBase
+public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatureBase
 {
     [Parameter(
         Mandatory = true,
@@ -462,6 +458,8 @@ public sealed class SetOpenAuthenticodeSignature : OpenAuthenticodeSignatureBase
     [Parameter()]
     public string? TimeStampServer { get; set; }
 
+    protected abstract bool Append { get; }
+
     protected override void ProcessRecord()
     {
         X509Certificate2 cert;
@@ -524,7 +522,8 @@ public sealed class SetOpenAuthenticodeSignature : OpenAuthenticodeSignatureBase
                     IncludeOption,
                     key,
                     TimeStampServer,
-                    TimeStampHashAlgorithm);
+                    TimeStampHashAlgorithm,
+                    Append);
 
                 if (ShouldProcess(path, "SetSignature"))
                 {
@@ -548,4 +547,22 @@ public sealed class SetOpenAuthenticodeSignature : OpenAuthenticodeSignatureBase
             }
         }
     }
+}
+
+[Cmdlet(VerbsCommon.Add, "OpenAuthenticodeSignature",
+    DefaultParameterSetName = "PathCertificate",
+    SupportsShouldProcess = true)]
+[OutputType(typeof(SignedCms))]
+public class AddOpenAuthenticodeSignature : AddSetOpenAuthenticodeSignature
+{
+    protected override bool Append => true;
+}
+
+[Cmdlet(VerbsCommon.Set, "OpenAuthenticodeSignature",
+    DefaultParameterSetName = "PathCertificate",
+    SupportsShouldProcess = true)]
+[OutputType(typeof(SignedCms))]
+public class SetOpenAuthenticodeSignature : AddSetOpenAuthenticodeSignature
+{
+    protected override bool Append => false;
 }

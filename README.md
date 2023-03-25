@@ -17,6 +17,30 @@ These cmdlets have the following requirements
 
 * PowerShell v7.2 or newer
 
+## Examples
+
+### Get Authenticode Signatures from File
+
+```powershell
+Get-OpenAuthenticodeSignature -Path test.ps1, test.dll
+```
+
+This gets all the Authenticode signatures present in the files `test.ps1` and `test.dll`.
+The output object contains each signature, the hash algorithm used, the timestamp information, as well as the certificate used to sign it.
+It will also attempt to validate the signature is trusted by a known CA, the `-SkipCertificateCheck` can be passed in to ignore any CA trust failures.
+
+### Set Authenticode signature
+
+```powershell
+$cert = Get-Item Cert:\CurrentUser\My\* -CodeSigningCert
+Set-OpenAuthenticodeSignature -Path test.ps1 -Certificate $cert
+```
+
+Signs the file `test.ps1` with the certificate provided using the default hash algorithm SHA256.
+The certificate retrieval only works on Windows, use `Get-PfxCertificate` on other platforms of the [X509Certificate2](https://learn.microsoft.com/en-us/dotnet/api/system.security.cryptography.x509certificates.x509certificate2?view=net-7.0) class directly on other platforms to get the certificate object to sign.
+The [Get-OpenAuthenticodeAzKey](docs/en-US/Get-OpenAuthenticodeAzKey.md) cmdlet can be used to retrieve a code signing certificate from Azure KeyVault to use to sign the certificate.
+The [Add-OpenAuthenticodeSignature](docs/en-US/Add-OpenAuthenticodeSignature.md) cmdlet can be used to add a signature to an existing set Authenticode signatures rather than replace the existing signature.
+
 ## Installing
 
 The easiest way to install this module is through [PowerShellGet](https://docs.microsoft.com/en-us/powershell/gallery/overview).

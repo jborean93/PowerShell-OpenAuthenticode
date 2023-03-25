@@ -11,6 +11,9 @@ Locale: en-US
 Cross platform module for Authenticode checking and setting. This includes signing and verifying PowerShell scripts like on Windows.
 
 ## OpenAuthenticode Cmdlets
+### [Add-OpenAuthenticodeSignature](Add-OpenAuthenticodeSignature.md)
+Adds an authenticode signature to a file.
+
 ### [Clear-OpenAuthenticodeSignature](Clear-OpenAuthenticodeSignature.md)
 Removes all Authenticode signatures from the path specified.
 
