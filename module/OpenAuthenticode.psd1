@@ -103,13 +103,13 @@
             LicenseUri = 'https://github.com/jborean93/PowerShell-OpenAuthenticode/blob/main/LICENSE'
 
             # A URL to the main website for this project.
-            ProjectUri = 'https://github.com/jborean93/PowerShell-Authenticode'
+            ProjectUri = 'https://github.com/jborean93/PowerShell-OpenAuthenticode'
 
             # A URL to an icon representing this module.
             # IconUri = ''
 
             # ReleaseNotes of this module
-            ReleaseNotes = 'See https://github.com/jborean93/PowerShell-Authenticode/blob/main/CHANGELOG.md'
+            ReleaseNotes = 'See https://github.com/jborean93/PowerShell-OpenAuthenticode/blob/main/CHANGELOG.md'
 
             # Prerelease string of this module
             # Prerelease = ''
