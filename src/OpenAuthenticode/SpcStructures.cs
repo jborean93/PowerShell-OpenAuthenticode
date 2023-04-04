@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Formats.Asn1;
+using System.Linq;
 using System.Security.Cryptography;
 
 namespace OpenAuthenticode;
@@ -135,6 +136,35 @@ internal sealed record SpcIndirectData(Oid DataType, byte[]? Data, Oid DigestAlg
         "SHA512" => new Oid("2.16.840.1.101.3.4.2.3"),
         _ => throw new NotImplementedException($"Unknown hash algorithm {algorithm.Name}"),
     };
+
+    internal void Validate(Oid contentType, ReadOnlySpan<byte> content)
+    {
+        if (contentType.Value != SpcIndirectData.OID.Value)
+        {
+            throw new CryptographicException(string.Format(
+                "Expected {0} content type '{1}' but got '{2}'",
+                SpcIndirectData.OID.FriendlyName,
+                SpcIndirectData.OID.Value,
+                contentType.Value));
+        }
+        SpcIndirectData actualContent = SpcIndirectData.Parse(content);
+
+        if (actualContent.DigestAlgorithm != DigestAlgorithm)
+        {
+            throw new CryptographicException(string.Format(
+                "Unexpected digest algorithm '{0}', expecting '{1}'",
+                actualContent.DigestAlgorithm,
+                DigestAlgorithm));
+        }
+
+        if (!Enumerable.SequenceEqual(actualContent.Digest, Digest))
+        {
+            throw new CryptographicException(string.Format(
+                "Signature mismatch: {0} != {1}",
+                Convert.ToHexString(actualContent.Digest),
+                Convert.ToHexString(Digest)));
+        }
+    }
 }
 
 /// <summary>

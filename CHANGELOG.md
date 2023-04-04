@@ -1,5 +1,9 @@
 # Changelog for OpenAuthenticode
 
+## v0.3.0 - TBD
+
+* Added support for verifying security catalog files (`.cat`) through the `SecurityCatalogProvider`
+
 ## v0.2.0 - 2023-03-25
 
 * Added support for `.dll` and `.exe` files through the `PEBinary` provider

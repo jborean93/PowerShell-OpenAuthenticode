@@ -14,7 +14,7 @@
     RootModule = 'bin/net6.0/OpenAuthenticode.dll'
 
     # Version number of this module.
-    ModuleVersion = '0.2.0'
+    ModuleVersion = '0.3.0'
 
     # Supported PSEditions
     # CompatiblePSEditions = @()
@@ -77,6 +77,7 @@
         'Clear-OpenAuthenticodeSignature'
         'Get-OpenAuthenticodeAzKey'
         'Get-OpenAuthenticodeSignature'
+        'Get-OpenFileCatalog'
         'Set-OpenAuthenticodeSignature'
     )
 

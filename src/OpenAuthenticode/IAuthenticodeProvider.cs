@@ -23,24 +23,21 @@ internal interface IAuthenticodeProvider
     public byte[] Signature { get; set; }
 
     /// <summary>
-    /// Gets the hashed data contents for the file which is then signed.
+    /// Create a new ContentInfo block to embed in the PKCS #7 signature.
+    /// The content type and content value is dependent on the provider being
+    /// used.
     /// </summary>
-    /// <remarks>
-    /// It is up to the provider implementation to set the indirect data
-    /// content as needed. The data content is then placed in the SignedCms
-    /// object and signed with the certificate provided.
-    /// </remarks>
-    /// <param name="digestAlgorithm">The digest/hash algorithm to use</param>
-    /// <returns>The indirect data content to sign</returns>
-    public SpcIndirectData HashData(Oid digestAlgorithm);
+    /// <param name="digestOid">The digest algorithm used for the current signature.</param>
+    /// <returns>The ContentInfo value to sign.</returns>
+    public ContentInfo CreateContent(Oid digestOid);
 
     /// <summary>
-    /// Add extra attributes to the PKCS #7 signature before it is signed.
-    /// It is up to the provider to add any provider specific attributes
-    /// here.
+    /// Verifies the supplied ContentInfo matches the provider data.
     /// </summary>
-    /// <param name="signer">The CmsSigner object that will be signed.</param>
-    public virtual void AddAttributes(CmsSigner signer) { }
+    /// <param name="content">The content data in the signature.</param>
+    /// <param name="digestOid">The digest algorithm used to sign the content block.</param>
+    /// <exception cref="CryptographicException">Invalid content block.</exception>
+    public void VerifyContent(ContentInfo content, Oid digestOid);
 
     /// <summary>
     /// Saves the file contents and signature (if present) to the path
@@ -70,6 +67,9 @@ internal static class ProviderFactory
         RegisterProvider(AuthenticodeProvider.PowerShellXml,
             PowerShellXmlProvider.FileExtensions,
             PowerShellXmlProvider.Create);
+        RegisterProvider(AuthenticodeProvider.SecurityCatalog,
+            SecurityCatalogProvider.FileExtensions,
+            SecurityCatalogProvider.Create);
     }
 
     /// <summary>
@@ -152,4 +152,5 @@ public enum AuthenticodeProvider
     PowerShell,
     PowerShellXml,
     PEBinary,
+    SecurityCatalog,
 }

@@ -123,7 +123,60 @@ internal class PEBinaryProvider : IAuthenticodeProvider
         _metadata = certificateTable;
     }
 
-    public SpcIndirectData HashData(Oid digestAlgorithm)
+    public ContentInfo CreateContent(Oid digestAlgorithm)
+    {
+        SpcIndirectData data = HashData(digestAlgorithm);
+
+        return new(SpcIndirectData.OID, data.GetBytes());
+    }
+
+    public void VerifyContent(ContentInfo content, Oid digestAlgorithm)
+    {
+        SpcIndirectData expectedContent = HashData(digestAlgorithm);
+        expectedContent.Validate(content.ContentType, content.Content);
+    }
+
+    public void Save(string path)
+    {
+        using FileStream fs = File.OpenWrite(path);
+        fs.SetLength(_metadata.CertificateOffset);
+
+        // Ensure we clear out the existing signature by trimming the end of
+        // the file.
+        fs.Seek(_metadata.CertificateTableOffset, SeekOrigin.Begin);
+
+        if (Signature.Length == 0)
+        {
+            fs.Write(new byte[8]);
+        }
+        else
+        {
+            // Ensure the PE binary is padded to a quadword offset before
+            // adding the certificate info.
+            int padding = (8 - ((int)fs.Length & 7)) & 7;
+            int signaturePadding = (8 - ((int)Signature.Length & 7)) & 7;
+
+            fs.Write(BitConverter.GetBytes((int)fs.Length + padding));
+            fs.Write(BitConverter.GetBytes(Signature.Length + signaturePadding + 8));
+
+            fs.Seek(0, SeekOrigin.End);
+            if (padding > 0)
+            {
+                fs.Write(new byte[padding]);
+            }
+
+            fs.Write(BitConverter.GetBytes(Signature.Length + signaturePadding + 8));
+            fs.Write(BitConverter.GetBytes((short)WIN_CERTIFICATE.WIN_CERT_REVISION_2_0));
+            fs.Write(BitConverter.GetBytes((short)WIN_CERTIFICATE.WIN_CERT_TYPE_PKCS_SIGNED_DATA));
+            fs.Write(Signature);
+            if (signaturePadding > 0)
+            {
+                fs.Write(new byte[signaturePadding]);
+            }
+        }
+    }
+
+    private SpcIndirectData HashData(Oid digestAlgorithm)
     {
         byte[] fileHash;
         HashAlgorithmName algoName = HashAlgorithmName.FromOid(digestAlgorithm.Value ?? "");
@@ -180,57 +233,5 @@ internal class PEBinaryProvider : IAuthenticodeProvider
             DigestParameters: null,
             Digest: fileHash
         );
-    }
-
-    public void AddAttributes(CmsSigner signer)
-    {
-        SpcSpOpusInfo opusInfo = new(new SpcString(Unicode: ""), new SpcLink(Url: ""));
-        signer.SignedAttributes.Add(new AsnEncodedData(SpcSpOpusInfo.OID, opusInfo.GetBytes()));
-
-        SpcStatementType statementType = new(new[]
-        {
-            new Oid("1.3.6.1.4.1.311.2.1.21", "SPC_INDIVIDUAL_SP_KEY_PURPOSE_OBJID"),
-        });
-        signer.SignedAttributes.Add(new AsnEncodedData(SpcStatementType.OID, statementType.GetBytes()));
-    }
-
-    public void Save(string path)
-    {
-        using FileStream fs = File.OpenWrite(path);
-        fs.SetLength(_metadata.CertificateOffset);
-
-        // Ensure we clear out the existing signature by trimming the end of
-        // the file.
-        fs.Seek(_metadata.CertificateTableOffset, SeekOrigin.Begin);
-
-        if (Signature.Length == 0)
-        {
-            fs.Write(new byte[8]);
-        }
-        else
-        {
-            // Ensure the PE binary is padded to a quadword offset before
-            // adding the certificate info.
-            int padding = (8 - ((int)fs.Length & 7)) & 7;
-            int signaturePadding = (8 - ((int)Signature.Length & 7)) & 7;
-
-            fs.Write(BitConverter.GetBytes((int)fs.Length + padding));
-            fs.Write(BitConverter.GetBytes(Signature.Length + signaturePadding + 8));
-
-            fs.Seek(0, SeekOrigin.End);
-            if (padding > 0)
-            {
-                fs.Write(new byte[padding]);
-            }
-
-            fs.Write(BitConverter.GetBytes(Signature.Length + signaturePadding + 8));
-            fs.Write(BitConverter.GetBytes((short)WIN_CERTIFICATE.WIN_CERT_REVISION_2_0));
-            fs.Write(BitConverter.GetBytes((short)WIN_CERTIFICATE.WIN_CERT_TYPE_PKCS_SIGNED_DATA));
-            fs.Write(Signature);
-            if (signaturePadding > 0)
-            {
-                fs.Write(new byte[signaturePadding]);
-            }
-        }
     }
 }

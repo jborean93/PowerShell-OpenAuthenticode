@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Security.Cryptography.Pkcs;
 using System.Text;
@@ -78,35 +79,17 @@ internal abstract class PowerShellProvider : IAuthenticodeProvider
         _fileEncoding = fileEncoding;
     }
 
-    public SpcIndirectData HashData(Oid digestAlgorithm)
+    public ContentInfo CreateContent(Oid digestAlgorithm)
     {
-        byte[] fileHash;
-        HashAlgorithmName algoName = HashAlgorithmName.FromOid(digestAlgorithm.Value ?? "");
-        using (IncrementalHash algo = IncrementalHash.CreateHash(algoName))
-        {
-            algo.AppendData(_content);
-            fileHash = algo.GetCurrentHash();
-        }
+        SpcIndirectData data = HashData(digestAlgorithm);
 
-        return new(
-            DataType: SpcSipInfo.OID,
-            Data: new SpcSipInfo(0x10000, _pwshSip).GetBytes(),
-            DigestAlgorithm: digestAlgorithm,
-            DigestParameters: null,
-            Digest: fileHash
-        );
+        return new(SpcIndirectData.OID, data.GetBytes());
     }
 
-    public void AddAttributes(CmsSigner signer)
+    public void VerifyContent(ContentInfo content, Oid digestAlgorithm)
     {
-        SpcSpOpusInfo opusInfo = new(null, null);
-        signer.SignedAttributes.Add(new AsnEncodedData(SpcSpOpusInfo.OID, opusInfo.GetBytes()));
-
-        SpcStatementType statementType = new(new[]
-        {
-            new Oid("1.3.6.1.4.1.311.2.1.21", "SPC_INDIVIDUAL_SP_KEY_PURPOSE_OBJID"),
-        });
-        signer.SignedAttributes.Add(new AsnEncodedData(SpcStatementType.OID, statementType.GetBytes()));
+        SpcIndirectData expectedContent = HashData(digestAlgorithm);
+        expectedContent.Validate(content.ContentType, content.Content);
     }
 
     public void Save(string path)
@@ -132,6 +115,25 @@ internal abstract class PowerShellProvider : IAuthenticodeProvider
         // The content already contains the original BOM chars so ensure that
         // the _fileEncoding doesn't add another one breaking the signature.
         File.WriteAllText(path, content, new BOMLessEncoding(_fileEncoding));
+    }
+
+    private SpcIndirectData HashData(Oid digestAlgorithm)
+    {
+        byte[] fileHash;
+        HashAlgorithmName algoName = HashAlgorithmName.FromOid(digestAlgorithm.Value ?? "");
+        using (IncrementalHash algo = IncrementalHash.CreateHash(algoName))
+        {
+            algo.AppendData(_content);
+            fileHash = algo.GetCurrentHash();
+        }
+
+        return new(
+            DataType: SpcSipInfo.OID,
+            Data: new SpcSipInfo(0x10000, _pwshSip).GetBytes(),
+            DigestAlgorithm: digestAlgorithm,
+            DigestParameters: null,
+            Digest: fileHash
+        );
     }
 
     private static bool IsValidEndBlock(ReadOnlySpan<char> block, int endIdx, int endBlockLength)

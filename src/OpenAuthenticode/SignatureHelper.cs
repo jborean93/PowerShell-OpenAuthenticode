@@ -102,15 +102,22 @@ public static class SignatureHelper
         string? timestampServer, HashAlgorithmName? timestampAlgorithm, bool append)
     {
         Oid digestOid = SpcIndirectData.OidFromHashAlgorithm(hashAlgorithm);
-        SpcIndirectData dataContent = provider.HashData(digestOid);
         CmsSigner signer = new(SubjectIdentifierType.IssuerAndSerialNumber, cert, privateKey)
         {
             DigestAlgorithm = digestOid,
             IncludeOption = includeOption,
         };
-        provider.AddAttributes(signer);
 
-        ContentInfo ci = new(SpcIndirectData.OID, dataContent.GetBytes());
+        SpcSpOpusInfo opusInfo = new(null, null);
+        signer.SignedAttributes.Add(new AsnEncodedData(SpcSpOpusInfo.OID, opusInfo.GetBytes()));
+
+        SpcStatementType statementType = new(new[]
+        {
+            new Oid("1.3.6.1.4.1.311.2.1.21", "SPC_INDIVIDUAL_SP_KEY_PURPOSE_OBJID"),
+        });
+        signer.SignedAttributes.Add(new AsnEncodedData(SpcStatementType.OID, statementType.GetBytes()));
+
+        ContentInfo ci = provider.CreateContent(digestOid);
         SignedCms signInfo = new(ci, false);
         signInfo.ComputeSignature(signer, true);
 
@@ -159,19 +166,22 @@ public static class SignatureHelper
         // extension method to account for this scenario.
         CounterSignature? counterSignature = GetCounterSignature(signInfo);
         CheckSignature(signInfo.SignerInfos, skipCertificateCheck, counterSignature, trustStore);
+        provider.VerifyContent(signInfo.ContentInfo, signInfo.SignerInfos[0].DigestAlgorithm);
 
-        if (signInfo.ContentInfo.ContentType.Value != SpcIndirectData.OID.Value)
-        {
-            throw new ArgumentException($"Unknown ContentType {signInfo.ContentInfo.ContentType.Value}");
-        }
-        SpcIndirectData dataContent = SpcIndirectData.Parse(signInfo.ContentInfo.Content);
-        SpcIndirectData actualContent = provider.HashData(dataContent.DigestAlgorithm);
-
-        if (!Enumerable.SequenceEqual(actualContent.Digest, dataContent.Digest))
-        {
-            string msg = $"Signature mismatch: {Convert.ToHexString(actualContent.Digest)} != {Convert.ToHexString(dataContent.Digest)}";
-            throw new CryptographicException(msg);
-        }
+        // For Debugging purposes, Windows doesn't seem to care about these values.
+        // SpcSpOpusInfo? opusInfo = null;
+        // SpcStatementType? statementType = null;
+        // foreach (CryptographicAttributeObject attr in signInfo.SignerInfos[0].SignedAttributes)
+        // {
+        //     if (attr.Oid.Value == SpcSpOpusInfo.OID.Value)
+        //     {
+        //         opusInfo = SpcSpOpusInfo.Parse(attr.Values[0].RawData);
+        //     }
+        //     else if (attr.Oid.Value == SpcStatementType.OID.Value)
+        //     {
+        //         statementType = SpcStatementType.Parse(attr.Values[0].RawData);
+        //     }
+        // }
 
         return signInfo;
     }
