@@ -34,6 +34,8 @@ Currently authentication relies on the lookup behaviour of [DefaultAzureCredenti
 It will lookup environment variables, device managed identities, az cli contexts, etc to authenticate with Azure.
 It has not been set to allow for interactive authentication through the web browser.
 
+See [about_AuthenticodeAzureKeys](./about_AuthenticodeAzureKeys.md) for more information on how a key can be used to sign files.
+
 ## EXAMPLES
 
 ### Example 1: Get key for use with signing
