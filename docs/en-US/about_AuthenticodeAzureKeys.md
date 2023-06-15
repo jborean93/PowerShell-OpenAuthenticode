@@ -9,7 +9,7 @@ It assumes that an Azure KeyVault and signing certificate has already been creat
 
 # LONG DESCRIPTION
 The following is a bash script that can be used to generate an Azure App Principal that can be used with [Get-OpenAuthenticodeAzKey](./Get-OpenAuthenticodeAzKey.md) to sign files.
-The `APP_NAME`, `RESOURCE_GROUP`, and `VAULT_NAME` variables need to be prefilled before running the code.
+The `APP_NAME`, `RESOURCE_GROUP`, `VAULT_NAME`, and `VAULT_CERT` variables need to be prefilled before running the code.
 It also requires the Azure CLI to be installed, otherwise run this in `docker run -it mcr.microsoft.com/azure-cli` where the cli is already available.
 
 ```bash
@@ -21,6 +21,9 @@ RESOURCE_GROUP="..."
 
 # The name of the Azure KeyVault.
 VAULT_NAME="..."
+
+# The name of the certificate in the above vault to use for signing
+VAULT_CERT="..."
 
 ROLE_NAME="KeyVault PowerShell-OpenAuthenticode"
 
@@ -53,12 +56,16 @@ EOF
         az role definition create \
             --role-definition "${ROLE_DEF}"
     )"
+    ROLE_ID="$(
+        echo "${ROLE_INFO}" |
+        jq -r '.name'
+    )"
+else
+    ROLE_ID="$(
+        echo "${ROLE_INFO}" |
+        jq -r '.[].name'
+    )"
 fi
-
-ROLE_ID="$(
-    echo "${ROLE_INFO}" |
-    jq -r '.name'
-)"
 
 PRINCIPAL_INFO="$(
     az ad sp create-for-rbac \
@@ -67,7 +74,7 @@ PRINCIPAL_INFO="$(
 
 AZURE_CREDENTIALS="$(
     echo "${PRINCIPAL_INFO}" |
-    jq -r '{clientId: .appId, clientSecret: .password, tenantId: .tenant}'
+    jq -r "{clientId: .appId, clientSecret: .password, tenantId: .tenant, vaultName: \"${VAULT_NAME}\", vaultCert: \"${VAULT_CERT}\"}"
 )"
 CLIENT_ID="$(
     echo "${PRINCIPAL_INFO}" |
@@ -83,23 +90,29 @@ echo "Save this json as your GitHub Actions secret"
 echo "${AZURE_CREDENTIALS}"
 ```
 
-The resulting json contains the principal id and secret that can be used in the following PowerShell script to get the key and sign the files as required.
+The resulting json contains all the information needed to sign files using OpenAuthenticode.
 
 ```powershell
-# These are specific to your vault and certificate name.
-$vaultName = '...'
-$certName = '...'
+# AZURE_CREDENTIALS contains the json from the above script
+$credInfo = ConvertFrom-Json -InputObject $env:AZURE_CREDENTIALS
+$vaultName = $credInfo.vaultName
+$vaultCert = $credInfo.vaultCert
 
-# This should read the secret from the env var
-# AZURE_CREDENTIALS.
-$azPrincipal = ConvertFrom-Json -InputObject $env:AZURE_CREDENTIALS
-$env:AZURE_CLIENT_ID = $azPrincipal.clientId
-$env:AZURE_TENANT_ID = $azPrincipal.tenantId
-$env:AZURE_CLIENT_SECRET = $azPrincipal.clientSecret
+$env:AZURE_CLIENT_ID = $credInfo.clientId
+$env:AZURE_CLIENT_SECRET = $credInfo.clientSecret
+$env:AZURE_TENANT_ID = $credInfo.tenantId
+$key = Get-OpenAuthenticodeAzKey -Vault $vaultName -Certificate $vaultCert
+$env:AZURE_CLIENT_ID = ''
+$env:AZURE_CLIENT_SECRET = ''
+$env:AZURE_TENANT_ID = ''
 
-$key = Get-OpenAuthenticodeAzKey -Vault $vaultName -Certificate $certName
-Set-OpenAuthenticodeSignature -Key $key -FilePath $path
+$signParams = @{
+    Key = $key
+    TimeStampServer = 'http://timestamp.digicert.com'
+    HashAlgorithm = 'SHA256'
+}
+Set-OpenAuthenticodeSignature -FilePath $path @signParams
 ```
 
-In this example the output json from the bash script has been stored in the environment variable `AZURE_CREDENTIALS` and the `$vaultName` and `$certName` relate to the vault and the certificate in that vault that will be used to sign the files.
+In this example the output json from the bash script has been stored in the environment variable `AZURE_CREDENTIALS`.
 Ensure the credentials json is stored securely so that it cannot be used for any unauthorised signing operations.
