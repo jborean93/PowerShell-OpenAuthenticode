@@ -10,9 +10,9 @@ using System.Security.Cryptography.Pkcs;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using Microsoft.PowerShell.Commands;
-using OpenAuthenticode.Shared;
+using OpenAuthenticode;
 
-namespace OpenAuthenticode;
+namespace OpenAuthenticode.Shared;
 
 public class OpenAuthenticodeSignatureBase : PSCmdlet
 {
@@ -136,7 +136,8 @@ public sealed class ClearOpenAuthenticodeSignature : OpenAuthenticodeSignatureBa
                 {
                     WriteVerbose($"Removing signature on file '{path}'");
                     provider.Signature = Array.Empty<byte>();
-                    if (ShouldProcess(path, "ClearSignature")) {
+                    if (ShouldProcess(path, "ClearSignature"))
+                    {
                         provider.Save(path);
                     }
                 }
