@@ -3,6 +3,7 @@
 ## v0.3.0 - TBD
 
 * Reworked Assembly Load Context to properly store extra dlls in new ALC
+* Added `Get-OpenAuthenticodeSslDotComKey` which can use SSL.com's eSigner API to sign content
 
 ## v0.2.0 - 2023-03-25
 

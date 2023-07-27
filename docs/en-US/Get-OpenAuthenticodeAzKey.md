@@ -1,5 +1,5 @@
 ---
-external help file: OpenAuthenticode.dll-Help.xml
+external help file: OpenAuthenticode.Module.dll-Help.xml
 Module Name: OpenAuthenticode
 online version: https://www.github.com/jborean93/PowerShell-OpenAuthenticode/blob/main/docs/en-US/Get-OpenAuthenticodeAzKey.md
 schema: 2.0.0
@@ -13,7 +13,7 @@ Get an Azure KeyVault certificate and key for use with Authenticode signing.
 ## SYNTAX
 
 ```
-Get-OpenAuthenticodeAzKey [-Vault] <String> -Certificate <String> [<CommonParameters>]
+Get-OpenAuthenticodeAzKey [-Vault] <String> [-Certificate] <String> [<CommonParameters>]
 ```
 
 ## DESCRIPTION
@@ -58,7 +58,7 @@ Parameter Sets: (All)
 Aliases: CertificateName
 
 Required: True
-Position: Named
+Position: 1
 Default value: None
 Accept pipeline input: False
 Accept wildcard characters: False

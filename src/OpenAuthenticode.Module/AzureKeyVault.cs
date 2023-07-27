@@ -25,7 +25,7 @@ public sealed class AzureKey : KeyProvider, IDisposable
     private AzureKey(CryptographyClient client, X509Certificate2 cert)
     {
         _client = client;
-        _keyAlgorithm = cert.GetKeyAlgorithm(); ;
+        _keyAlgorithm = cert.GetKeyAlgorithm();
 
         Certificate = cert;
         if (_keyAlgorithm == "1.2.840.113549.1.1.1") // RSA

@@ -1,5 +1,5 @@
 ---
-external help file: OpenAuthenticode.dll-Help.xml
+external help file: OpenAuthenticode.Module.dll-Help.xml
 Module Name: OpenAuthenticode
 online version: https://www.github.com/jborean93/PowerShell-OpenAuthenticode/blob/main/docs/en-US/Add-OpenAuthenticodeSignature.md
 schema: 2.0.0
@@ -265,7 +265,7 @@ Valid providers are:
 Type: AuthenticodeProvider
 Parameter Sets: (All)
 Aliases:
-Accepted values: NotSpecified, PowerShell, PEBinary
+Accepted values: NotSpecified, PowerShell, PowerShellXml, PEBinary
 
 Required: False
 Position: Named
@@ -367,6 +367,7 @@ If `-PassThru` is specified, this will output the Authenticode signature details
 
 ## NOTES
 Nested signatures are stored as unsigned attributes on the file's existing Authenticode signature data.
+Using `-Debug` can expose sensitive messages depending on the key provider used, use this only for debugging purposes.
 
 ## RELATED LINKS
 

@@ -97,21 +97,29 @@ public static class SignatureHelper
         }
     }
 
-    internal static SignedCms SetFileSignature(IAuthenticodeProvider provider, X509Certificate2 cert,
-        HashAlgorithmName hashAlgorithm, X509IncludeOption includeOption, AsymmetricAlgorithm? privateKey,
-        string? timestampServer, HashAlgorithmName? timestampAlgorithm, bool append)
+    internal static SignedCms CreateSignature(
+        ContentInfo dataToSign,
+        AsnEncodedData[] attributesToSign,
+        HashAlgorithmName hashAlgorithm,
+        X509Certificate2 cert,
+        X509IncludeOption includeOption,
+        AsymmetricAlgorithm? privateKey,
+        string? timestampServer,
+        HashAlgorithmName? timestampAlgorithm
+    )
     {
         Oid digestOid = SpcIndirectData.OidFromHashAlgorithm(hashAlgorithm);
-        SpcIndirectData dataContent = provider.HashData(digestOid);
         CmsSigner signer = new(SubjectIdentifierType.IssuerAndSerialNumber, cert, privateKey)
         {
             DigestAlgorithm = digestOid,
             IncludeOption = includeOption,
         };
-        provider.AddAttributes(signer);
+        foreach (AsnEncodedData toSign in attributesToSign)
+        {
+            signer.SignedAttributes.Add(toSign);
+        }
 
-        ContentInfo ci = new(SpcIndirectData.OID, dataContent.GetBytes());
-        SignedCms signInfo = new(ci, false);
+        SignedCms signInfo = new(dataToSign, false);
         signInfo.ComputeSignature(signer, true);
 
         if (!string.IsNullOrWhiteSpace(timestampServer))
@@ -122,6 +130,15 @@ public static class SignatureHelper
             ).ConfigureAwait(false).GetAwaiter().GetResult();
         }
 
+        return signInfo;
+    }
+
+    internal static void SetFileSignature(
+        IAuthenticodeProvider provider,
+        SignedCms signInfo,
+        bool append
+    )
+    {
         if (append && provider.Signature.Length > 0)
         {
             SignedCms existingSignature = new();
@@ -135,8 +152,6 @@ public static class SignatureHelper
         {
             provider.Signature = signInfo.Encode();
         }
-
-        return signInfo;
     }
 
     internal static PSObject WrapSignedDataForPS(SignedCms data, string? path)
@@ -231,3 +246,30 @@ public static class SignatureHelper
 
 public record CounterSignature(X509Certificate2 Certificate, HashAlgorithmName HashAlgorithm,
     DateTime TimeStamp);
+
+
+internal sealed class CaptureHashKey : RSA
+{
+    public CaptureHashKey() { }
+
+    public override RSAParameters ExportParameters(bool includePrivateParameters)
+        => throw new NotImplementedException();
+
+    public override void ImportParameters(RSAParameters parameters)
+        => throw new NotImplementedException();
+
+    public override byte[] SignHash(byte[] hash, HashAlgorithmName hashAlgorithm, RSASignaturePadding padding)
+    {
+        throw new CapturedHashException(hash);
+    }
+}
+
+internal class CapturedHashException : Exception
+{
+    internal byte[] Hash { get; }
+
+    internal CapturedHashException(byte[] hash)
+    {
+        Hash = hash;
+    }
+}
