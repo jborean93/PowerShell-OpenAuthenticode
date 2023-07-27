@@ -1,10 +1,7 @@
-using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 
-[assembly: InternalsVisibleTo("OpenAuthenticode")]
-
-namespace OpenAuthenticode.Shared;
+namespace OpenAuthenticode;
 
 /// <summary>
 /// Abstract class used to define the base definition for custom key providers

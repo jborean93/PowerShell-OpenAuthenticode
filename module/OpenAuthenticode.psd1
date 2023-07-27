@@ -11,10 +11,10 @@
 @{
 
     # Script module or binary module file associated with this manifest.
-    RootModule = 'bin/net6.0/OpenAuthenticode.dll'
+    RootModule = 'OpenAuthenticode.psm1'
 
     # Version number of this module.
-    ModuleVersion = '0.2.0'
+    ModuleVersion = '0.3.0'
 
     # Supported PSEditions
     # CompatiblePSEditions = @()
@@ -56,14 +56,10 @@
     # ScriptsToProcess = @()
 
     # Type files (.ps1xml) to be loaded when importing this module
-    TypesToProcess = @(
-        'OpenAuthenticode.Type.ps1xml'
-    )
+    # TypesToProcess = @()
 
     # Format files (.ps1xml) to be loaded when importing this module
-    FormatsToProcess = @(
-        'OpenAuthenticode.Format.ps1xml'
-    )
+    # FormatsToProcess = @()
 
     # Modules to import as nested modules of the module specified in RootModule/ModuleToProcess
     NestedModules = @()

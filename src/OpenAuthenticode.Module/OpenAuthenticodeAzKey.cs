@@ -1,8 +1,8 @@
 using System;
 using System.Management.Automation;
-using OpenAuthenticode.Shared;
+using OpenAuthenticode;
 
-namespace OpenAuthenticode;
+namespace OpenAuthenticode.Shared;
 
 [Cmdlet(VerbsCommon.Get, "OpenAuthenticodeAzKey")]
 [OutputType(typeof(AzureKey))]
