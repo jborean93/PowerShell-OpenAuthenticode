@@ -1,6 +1,5 @@
 using System;
 using System.Management.Automation;
-using OpenAuthenticode;
 
 namespace OpenAuthenticode.Shared;
 

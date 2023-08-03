@@ -1,5 +1,5 @@
 ---
-external help file: OpenAuthenticode.dll-Help.xml
+external help file: OpenAuthenticode.Module.dll-Help.xml
 Module Name: OpenAuthenticode
 online version: https://www.github.com/jborean93/PowerShell-OpenAuthenticode/blob/main/docs/en-US/Get-OpenAuthenticodeSignature.md
 schema: 2.0.0
@@ -204,6 +204,7 @@ Valid providers are:
 Type: AuthenticodeProvider
 Parameter Sets: (All)
 Aliases:
+Accepted values: NotSpecified, PowerShell, PowerShellXml, PEBinary
 
 Required: False
 Position: Named

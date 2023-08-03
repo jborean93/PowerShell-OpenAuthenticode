@@ -9,12 +9,12 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.Pkcs;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
+using System.Threading.Tasks;
 using Microsoft.PowerShell.Commands;
-using OpenAuthenticode;
 
 namespace OpenAuthenticode.Shared;
 
-public class OpenAuthenticodeSignatureBase : PSCmdlet
+public class OpenAuthenticodeSignatureBase : AsyncPSCmdlet
 {
     internal string[] _paths = Array.Empty<string>();
     internal bool _expandWildCardPaths = false;
@@ -108,7 +108,7 @@ public sealed class ClearOpenAuthenticodeSignature : OpenAuthenticodeSignatureBa
     [ArgumentCompletions("Utf8", "ASCII", "ANSI", "OEM", "Unicode", "Utf8Bom", "Utf8NoBom")]
     public Encoding? Encoding { get; set; }
 
-    protected override void ProcessRecord()
+    protected override Task ProcessRecordAsync()
     {
         (string, ProviderInfo)[] paths = NormalizePaths();
 
@@ -153,6 +153,8 @@ public sealed class ClearOpenAuthenticodeSignature : OpenAuthenticodeSignatureBa
                 continue;
             }
         }
+
+        return Task.CompletedTask;
     }
 }
 
@@ -224,12 +226,12 @@ public sealed class GetOpenAuthenticodeSignature : OpenAuthenticodeSignatureBase
     [Parameter()]
     public X509Certificate2Collection? TrustStore { get; set; }
 
-    protected override void ProcessRecord()
+    protected override Task ProcessRecordAsync()
     {
         if (ParameterSetName == "Path" || ParameterSetName == "LiteralPath")
         {
             ProcessPaths();
-            return;
+            return Task.CompletedTask;
         }
 
         AuthenticodeProvider selectedProvider = Provider ?? AuthenticodeProvider.NotSpecified;
@@ -241,7 +243,7 @@ public sealed class GetOpenAuthenticodeSignature : OpenAuthenticodeSignatureBase
                 ErrorCategory.InvalidArgument,
                 Provider);
             WriteError(err);
-            return;
+            return Task.CompletedTask;
         }
 
         if (ParameterSetName == "Content")
@@ -255,6 +257,8 @@ public sealed class GetOpenAuthenticodeSignature : OpenAuthenticodeSignatureBase
         {
             ProcessContent(RawContent, selectedProvider, Encoding);
         }
+
+        return Task.CompletedTask;
     }
 
     private void ProcessContent(byte[] data, AuthenticodeProvider selectedProvider, Encoding? dataEncoding)
@@ -461,7 +465,7 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
 
     protected abstract bool Append { get; }
 
-    protected override void ProcessRecord()
+    protected override async Task ProcessRecordAsync()
     {
         X509Certificate2 cert;
         AsymmetricAlgorithm? key = null;
@@ -478,6 +482,14 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
         }
 
         (string, ProviderInfo)[] paths = NormalizePaths();
+
+        // For csc based API they need to provide the hashes to sign before
+        // they send the request. To make this more efficient and to avoid
+        // prompting for user input per file we get these hashes to provide
+        // to the custom key before actually signing the data.
+        CaptureHashKey captureKey = new();
+        List<HashOperation> operations = new();
+
         foreach ((string path, ProviderInfo psProvider) in paths)
         {
             if (psProvider.ImplementingType != typeof(FileSystemProvider))
@@ -514,26 +526,85 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
                     string ext = System.IO.Path.GetExtension(path);
                     provider = ProviderFactory.Create(ext, fileData, fileEncoding: Encoding);
                 }
-                WriteVerbose($"Setting file '{path}' signature with provider {provider.Provider} with {HashAlgorithm.Name} and timestamp server '{TimeStampServer}'");
 
-                SignedCms signInfo = SignatureHelper.SetFileSignature(
-                    provider,
-                    cert,
+                Oid digestOid = SpcIndirectData.OidFromHashAlgorithm(HashAlgorithm);
+                SpcIndirectData dataContent = provider.HashData(digestOid);
+                ContentInfo ci = new(SpcIndirectData.OID, dataContent.GetBytes());
+                AsnEncodedData[] attributesToSign = provider.GetAttributesToSign();
+
+                // First call is done with the custom key which captures the
+                // hashes to be signed. This is done so the key can be provided
+                // with the data needed for it to pre-authenticate the signing
+                // operations. The actual hashing is done after all files have
+                // been collected.
+                try
+                {
+                    SignatureHelper.CreateSignature(
+                        ci,
+                        attributesToSign,
+                        HashAlgorithm,
+                        cert,
+                        IncludeOption,
+                        captureKey,
+                        null,
+                        null);
+                }
+                catch (CapturedHashException e)
+                {
+                    Key?.RegisterHashToSign(e.Hash, fileData, HashAlgorithm);
+                    operations.Add(new(path, provider, fileData, e.Hash, ci, digestOid, attributesToSign));
+                    continue;
+                }
+
+                // This should not occur, the CapturedHashException should have been called.
+                throw new RuntimeException($"Unknown failure trying to capture data hash for '{path}'");
+            }
+            catch (Exception e)
+            {
+                ErrorRecord err = new(
+                    e,
+                    "CalculateSignatureError",
+                    ErrorCategory.NotSpecified,
+                    path);
+                WriteError(err);
+                continue;
+            }
+        }
+
+        // Let the custom key know there are no more hashes for this cmdlet call
+        // and it is free to do any pre-work for calculating the signature.
+        if (Key != null)
+        {
+            await Key.AuthorizeRegisteredHashes(this);
+        }
+
+        foreach (HashOperation operation in operations)
+        {
+            try
+            {
+                WriteVerbose($"Setting file '{operation.Path}' signature with provider {operation.Provider.Provider} with {HashAlgorithm.Name} and timestamp server '{TimeStampServer}'");
+                SignedCms signInfo = SignatureHelper.CreateSignature(
+                    operation.Content,
+                    operation.SignedAttributes,
                     HashAlgorithm,
+                    cert,
                     IncludeOption,
-                    key,
+                    Key?.Key,
                     TimeStampServer,
-                    TimeStampHashAlgorithm,
+                    TimeStampHashAlgorithm);
+                SignatureHelper.SetFileSignature(
+                    operation.Provider,
+                    signInfo,
                     Append);
 
-                if (ShouldProcess(path, "SetSignature"))
+                if (ShouldProcess(operation.Path, "SetSignature"))
                 {
-                    provider.Save(path);
+                    operation.Provider.Save(operation.Path);
                 }
 
                 if (PassThru)
                 {
-                    WriteObject(SignatureHelper.WrapSignedDataForPS(signInfo, path));
+                    WriteObject(SignatureHelper.WrapSignedDataForPS(signInfo, operation.Path));
                 }
             }
             catch (Exception e)
@@ -542,13 +613,23 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
                     e,
                     "SetSignatureError",
                     ErrorCategory.NotSpecified,
-                    path);
+                    operation.Path);
                 WriteError(err);
                 continue;
             }
         }
     }
 }
+
+internal sealed record HashOperation(
+    string Path,
+    IAuthenticodeProvider Provider,
+    byte[] FileData,
+    byte[] DataHash,
+    ContentInfo Content,
+    Oid DigestOid,
+    AsnEncodedData[] SignedAttributes
+);
 
 [Cmdlet(VerbsCommon.Add, "OpenAuthenticodeSignature",
     DefaultParameterSetName = "PathCertificate",

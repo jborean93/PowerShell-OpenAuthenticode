@@ -3,7 +3,6 @@ using System.IO;
 using System.Linq;
 using System.Reflection.PortableExecutable;
 using System.Security.Cryptography;
-using System.Security.Cryptography.Pkcs;
 using System.Text;
 
 namespace OpenAuthenticode;
@@ -182,16 +181,19 @@ internal class PEBinaryProvider : IAuthenticodeProvider
         );
     }
 
-    public void AddAttributes(CmsSigner signer)
+    public AsnEncodedData[] GetAttributesToSign()
     {
         SpcSpOpusInfo opusInfo = new(new SpcString(Unicode: ""), new SpcLink(Url: ""));
-        signer.SignedAttributes.Add(new AsnEncodedData(SpcSpOpusInfo.OID, opusInfo.GetBytes()));
-
         SpcStatementType statementType = new(new[]
         {
             new Oid("1.3.6.1.4.1.311.2.1.21", "SPC_INDIVIDUAL_SP_KEY_PURPOSE_OBJID"),
         });
-        signer.SignedAttributes.Add(new AsnEncodedData(SpcStatementType.OID, statementType.GetBytes()));
+
+        return new[]
+        {
+            new AsnEncodedData(SpcSpOpusInfo.OID, opusInfo.GetBytes()),
+            new AsnEncodedData(SpcStatementType.OID, statementType.GetBytes())
+        };
     }
 
     public void Save(string path)

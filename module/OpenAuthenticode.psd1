@@ -73,6 +73,7 @@
         'Clear-OpenAuthenticodeSignature'
         'Get-OpenAuthenticodeAzKey'
         'Get-OpenAuthenticodeSignature'
+        'Get-OpenAuthenticodeSslDotComKey'
         'Set-OpenAuthenticodeSignature'
     )
 

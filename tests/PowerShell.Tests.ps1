@@ -37,6 +37,29 @@ Describe "PowerShell Authenticode" {
         }
     }
 
+    It "Signs a small script with default hash" {
+        $scriptPath = New-Item -Path temp: -Name script.ps1 -Force -Value '"a"'
+
+        $setParams = @{
+            Path = $scriptPath
+            Certificate = $cert
+        }
+        $res = Set-OpenAuthenticodeSignature @setParams
+        $res | Should -BeNullOrEmpty
+
+        $actual = Get-OpenAuthenticodeSignature -Path $scriptPath @trustParams
+        $actual | Should -BeOfType ([System.Security.Cryptography.Pkcs.SignedCms])
+        $actual.Path | Should -Be $scriptPath.FullName
+        $actual.HashAlgorithm | Should -Be SHA256
+        $actual.TimeStampInfo | Should -BeNullOrEmpty
+        $actual.Certificate.Thumbprint | Should -Be $cert.Thumbprint
+
+        If (Get-Command -Name Get-AuthenticodeSignature -ErrorAction Ignore) {
+            $actual = Get-AuthenticodeSignature -FilePath $scriptPath.FullName
+            $actual.Status | Should -Not -Be HashMismatch
+        }
+    }
+
     It "Signs ps1xml script" {
         $scriptPath = New-Item -Path temp: -Name script.ps1xml -Force -Value "<?xml version=`"1.0`" encoding=`"utf-8`"?>`n<Configuration />"
 

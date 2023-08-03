@@ -1,5 +1,5 @@
 ---
-external help file: OpenAuthenticode.dll-Help.xml
+external help file: OpenAuthenticode.Module.dll-Help.xml
 Module Name: OpenAuthenticode
 online version: https://www.github.com/jborean93/PowerShell-OpenAuthenticode/blob/main/docs/en-US/Set-OpenAuthenticodeSignature.md
 schema: 2.0.0
@@ -272,6 +272,7 @@ Valid providers are:
 Type: AuthenticodeProvider
 Parameter Sets: (All)
 Aliases:
+Accepted values: NotSpecified, PowerShell, PowerShellXml, PEBinary
 
 Required: False
 Position: Named
@@ -373,6 +374,7 @@ If `-PassThru` is specified, this will output the Authenticode signature details
 ## NOTES
 Unlike  [Set-AuthenticodeSignature](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.security/set-authenticodesignature?view=powershell-7.3) this cmdlet uses an RFC 3161 compliant time stamp server for the counter signatures.
 Windows treats both an RFC 3161 and the legacy Authenticode timestamped signature as the same so this should not affect the validation of the signature on Windows.
+Using `-Debug` can expose sensitive messages depending on the key provider used, use this only for debugging purposes.
 
 ## RELATED LINKS
 

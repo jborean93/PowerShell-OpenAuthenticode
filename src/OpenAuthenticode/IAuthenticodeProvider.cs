@@ -35,12 +35,12 @@ internal interface IAuthenticodeProvider
     public SpcIndirectData HashData(Oid digestAlgorithm);
 
     /// <summary>
-    /// Add extra attributes to the PKCS #7 signature before it is signed.
-    /// It is up to the provider to add any provider specific attributes
-    /// here.
+    /// Gets extra attributes that need to be included in the data to be
+    /// signed in the PKCS #7 signature. It is up to the provider to add any
+    /// provider specific attributes.
     /// </summary>
-    /// <param name="signer">The CmsSigner object that will be signed.</param>
-    public virtual void AddAttributes(CmsSigner signer) { }
+    /// <returns>The ASN encoded attributes to be included as signed attributes.</returns>
+    public virtual AsnEncodedData[] GetAttributesToSign() => Array.Empty<AsnEncodedData>();
 
     /// <summary>
     /// Saves the file contents and signature (if present) to the path

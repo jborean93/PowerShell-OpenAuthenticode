@@ -1,5 +1,7 @@
+using System;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Threading.Tasks;
 
 namespace OpenAuthenticode;
 
@@ -18,4 +20,10 @@ public abstract class KeyProvider
     /// They key used to sign the file.
     /// </summary>
     internal abstract AsymmetricAlgorithm Key { get; }
+
+    internal virtual void RegisterHashToSign(Span<byte> hash, Span<byte> content, HashAlgorithmName hashAlgorithm)
+    { }
+
+    internal virtual Task AuthorizeRegisteredHashes(AsyncPSCmdlet cmdlet)
+        => Task.CompletedTask;
 }
