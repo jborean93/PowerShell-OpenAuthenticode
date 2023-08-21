@@ -16,32 +16,32 @@ Set an authenticode signature on a file.
 ```
 Set-OpenAuthenticodeSignature [-Path] <String[]> -Certificate <X509Certificate2> [-Encoding <Encoding>]
  [-HashAlgorithm <HashAlgorithmName>] [-IncludeOption <X509IncludeOption>] [-PassThru]
- [-TimeStampHashAlgorithm <HashAlgorithmName>] [-TimeStampServer <String>] [-Provider <AuthenticodeProvider>]
- [-WhatIf] [-Confirm] [<CommonParameters>]
+ [-TimeStampHashAlgorithm <HashAlgorithmName>] [-TimeStampServer <String>] [-Silent]
+ [-Provider <AuthenticodeProvider>] [-WhatIf] [-Confirm] [<CommonParameters>]
 ```
 
 ### PathKey
 ```
 Set-OpenAuthenticodeSignature [-Path] <String[]> -Key <KeyProvider> [-Encoding <Encoding>]
  [-HashAlgorithm <HashAlgorithmName>] [-IncludeOption <X509IncludeOption>] [-PassThru]
- [-TimeStampHashAlgorithm <HashAlgorithmName>] [-TimeStampServer <String>] [-Provider <AuthenticodeProvider>]
- [-WhatIf] [-Confirm] [<CommonParameters>]
+ [-TimeStampHashAlgorithm <HashAlgorithmName>] [-TimeStampServer <String>] [-Silent]
+ [-Provider <AuthenticodeProvider>] [-WhatIf] [-Confirm] [<CommonParameters>]
 ```
 
 ### LiteralPathCertificate
 ```
 Set-OpenAuthenticodeSignature -LiteralPath <String[]> -Certificate <X509Certificate2> [-Encoding <Encoding>]
  [-HashAlgorithm <HashAlgorithmName>] [-IncludeOption <X509IncludeOption>] [-PassThru]
- [-TimeStampHashAlgorithm <HashAlgorithmName>] [-TimeStampServer <String>] [-Provider <AuthenticodeProvider>]
- [-WhatIf] [-Confirm] [<CommonParameters>]
+ [-TimeStampHashAlgorithm <HashAlgorithmName>] [-TimeStampServer <String>] [-Silent]
+ [-Provider <AuthenticodeProvider>] [-WhatIf] [-Confirm] [<CommonParameters>]
 ```
 
 ### LiteralPathKey
 ```
 Set-OpenAuthenticodeSignature -LiteralPath <String[]> -Key <KeyProvider> [-Encoding <Encoding>]
  [-HashAlgorithm <HashAlgorithmName>] [-IncludeOption <X509IncludeOption>] [-PassThru]
- [-TimeStampHashAlgorithm <HashAlgorithmName>] [-TimeStampServer <String>] [-Provider <AuthenticodeProvider>]
- [-WhatIf] [-Confirm] [<CommonParameters>]
+ [-TimeStampHashAlgorithm <HashAlgorithmName>] [-TimeStampServer <String>] [-Silent]
+ [-Provider <AuthenticodeProvider>] [-WhatIf] [-Confirm] [<CommonParameters>]
 ```
 
 ## DESCRIPTION
@@ -273,6 +273,23 @@ Type: AuthenticodeProvider
 Parameter Sets: (All)
 Aliases:
 Accepted values: NotSpecified, PowerShell, PowerShellXml, PEBinary
+
+Required: False
+Position: Named
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -Silent
+Do not show any PIN prompts when attempting to open the key for signing.
+If a key requires a PIN prompt and `-Silent` is specified, the signing operation will fail.
+This is only valid for keys retrieved by Windows and is ignored by custom keys provided with `-Key`.
+
+```yaml
+Type: SwitchParameter
+Parameter Sets: (All)
+Aliases:
 
 Required: False
 Position: Named

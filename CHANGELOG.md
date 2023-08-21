@@ -4,6 +4,8 @@
 
 * Reworked Assembly Load Context to properly store extra dlls in new ALC
 * Added `Get-OpenAuthenticodeSslDotComKey` which can use SSL.com's eSigner API to sign content
+* Added the `-Silent` parameter for `Set-OpenAuthenticodeSignature` and `Add-OpenAuthenticodeSignature` to disable Windows certificate PIN prompts
+  * The original behaviour was to always be silent but has been changed, use this parameter to fallback to the old behaviour.
 
 ## v0.2.0 - 2023-03-25
 
