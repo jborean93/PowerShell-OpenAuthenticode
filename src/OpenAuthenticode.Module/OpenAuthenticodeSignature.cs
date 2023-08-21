@@ -463,6 +463,9 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
     [Parameter()]
     public string? TimeStampServer { get; set; }
 
+    [Parameter()]
+    public SwitchParameter Silent { get; set; }
+
     protected abstract bool Append { get; }
 
     protected override async Task ProcessRecordAsync()
@@ -547,7 +550,8 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
                         IncludeOption,
                         captureKey,
                         null,
-                        null);
+                        null,
+                        true);
                 }
                 catch (CapturedHashException e)
                 {
@@ -591,7 +595,8 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
                     IncludeOption,
                     Key?.Key,
                     TimeStampServer,
-                    TimeStampHashAlgorithm);
+                    TimeStampHashAlgorithm,
+                    Silent);
                 SignatureHelper.SetFileSignature(
                     operation.Provider,
                     signInfo,

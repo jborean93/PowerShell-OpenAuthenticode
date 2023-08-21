@@ -105,7 +105,8 @@ public static class SignatureHelper
         X509IncludeOption includeOption,
         AsymmetricAlgorithm? privateKey,
         string? timestampServer,
-        HashAlgorithmName? timestampAlgorithm
+        HashAlgorithmName? timestampAlgorithm,
+        bool silent
     )
     {
         Oid digestOid = SpcIndirectData.OidFromHashAlgorithm(hashAlgorithm);
@@ -120,7 +121,7 @@ public static class SignatureHelper
         }
 
         SignedCms signInfo = new(dataToSign, false);
-        signInfo.ComputeSignature(signer, true);
+        signInfo.ComputeSignature(signer, silent);
 
         if (!string.IsNullOrWhiteSpace(timestampServer))
         {
