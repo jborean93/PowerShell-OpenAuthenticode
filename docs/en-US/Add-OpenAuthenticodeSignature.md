@@ -53,6 +53,7 @@ It is possible to sign a file using a certificate object with an associated key.
 The simplest way to get a certificate is to use the [Get-PfxCertificate cmdlet](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.security/get-pfxcertificate?view=powershell-7.3) which works on both Windows and non-Windows hosts.
 It is also possible to get a code signing certificate through the `Cert:\` provider alongside the `-CodeSigningCert` parameter on Windows.
 The certificate must have the Key Usage of `Digital Signature (80)` and Enhanced Key Usage `Code Signing (1.3.6.1.5.5.7.3.3)` for it to be used with Authenticode.
+The certificate must also use the RSA or ECDSA key algorithm for it to be used, other algorithms are not implemented.
 While it should be signed by a trusted CA authority for it to be validated normally, it is not a requirement to sign the file.
 
 See [about_AuthenticodeProviders](./about_AuthenticodeProviders.md) for more information about what providers are currently supported.
@@ -88,8 +89,13 @@ Like example 1 but also adds a counter signature with the Digicert timestamp ser
 ### -Certificate
 The certificate used to sign the files specified.
 Use the `Get-PfxCertificate` or `Get-ChildItem Cert:\... -CodeSigningCert` (Windows only) to get a certificate to use for signing.
-The certificate must have access to its associated private key for it to be able to sign the file.
-It should also have the Key Usage of `Digital Signature (80)` and Enhanced Key Usage `Code Signing (1.3.6.1.5.5.7.3.3)`.
+A valid certificate must meet the following requirements:
+
++ Must have access to its associated private key for it to be able to sign the file.
+
++ Has the Key Usage of `Digital Signature (80)` and Enhanced Key Usage `Code Signing (1.3.6.1.5.5.7.3.3)`.
+
++ Uses the RSA or ECDSA signature algorithm
 
 ```yaml
 Type: X509Certificate2
