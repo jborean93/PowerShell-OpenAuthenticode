@@ -1,6 +1,6 @@
 # Changelog for OpenAuthenticode
 
-## v0.3.0 - TBD
+## v0.3.0 - 2023-08-24
 
 * Reworked Assembly Load Context to properly store extra dlls in new ALC
 * Added `Get-OpenAuthenticodeSslDotComKey` which can use SSL.com's eSigner API to sign content
