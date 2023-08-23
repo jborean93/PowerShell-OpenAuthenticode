@@ -14,10 +14,10 @@ Currently the following providers have been implemented in this module.
 |PowerShellXml|`.psc1`, `.ps1xml`|Yes|
 |PEBinary|`.dll`, `.exe`|No|
 
-The `Get-OpenAuthenticodeSignature` and `Set-OpenAuthenticodeSignature` uses the extension on the file path provided to determine what provider to use.
+The `Get-OpenAuthenticodeSignature`, `Set-OpenAuthenticodeSignature`, and `Add-OpenAuthenticodeSignature` uses the extension on the file path provided to determine what provider to use.
 If the file has no provider, or one of the content parameters are used, an explicit provider can be specified with `-Provider`.
 An explicit provider can also be specified to override the extension lookup if that is desired for any reason.
-If a provider supports string contents, the `-Content` parameter can be used with `Get-AuthenticodeSignature` to get a signature from a string value.
+If a provider supports string contents, the `-Content` parameter can be used with `Get-OpenAuthenticodeSignature` to get a signature from a string value.
 
 Each provider provides a way to:
 

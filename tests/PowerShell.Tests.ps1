@@ -7,8 +7,14 @@ Describe "PowerShell Authenticode" {
         )
         $cert = New-CodeSigningCert -Subject CN=PowerShell -Issuer $caCert
 
+        $caCertECDSA = New-X509Certificate -Subject CN=PowerShellCA-ECDSA -Extension @(
+            [System.Security.Cryptography.X509Certificates.X509BasicConstraintsExtension]::new($true, $false, 0, $true)
+        ) -KeyAlgorithm ECDSA_nistP256
+        $certECDSA = New-CodeSigningCert -Subject CN=PowerShell-ECDSA -Issuer $caCertECDSA -KeyAlgorithm ECDSA_nistP256
+
         $extraTrustStore = [System.Security.Cryptography.X509Certificates.X509Certificate2Collection]::new()
         $extraTrustStore.Add($caCert)
+        $extraTrustStore.Add($caCertECDSA)
         $trustParams = @{
             TrustStore = $extraTrustStore
         }
@@ -309,7 +315,7 @@ Describe "PowerShell Authenticode" {
         [string]$err[0] | Should -Be "File '$scriptPath' does not contain an authenticode signature"
     }
 
-    It "Signs a script with hash <Name>" -TestCases @(
+    It "Signs a script with RSA hash <Name>" -TestCases @(
         @{Name = "SHA1" },
         @{Name = "SHA256" },
         @{Name = "SHA384" },
@@ -333,6 +339,37 @@ Describe "PowerShell Authenticode" {
         $actual.HashAlgorithm | Should -Be $Name
         $actual.TimeStampInfo | Should -BeNullOrEmpty
         $actual.Certificate.Thumbprint | Should -Be $cert.Thumbprint
+
+        If (Get-Command -Name Get-AuthenticodeSignature -ErrorAction Ignore) {
+            $actual = Get-AuthenticodeSignature -FilePath $scriptPath.FullName
+            $actual.Status | Should -Not -Be HashMismatch
+        }
+    }
+
+    It "Signs a script with ECDSA hash <Name>" -TestCases @(
+        @{Name = "SHA1" },
+        @{Name = "SHA256" },
+        @{Name = "SHA384" },
+        @{Name = "SHA512" }
+    ) {
+        param ($Name)
+
+        $scriptPath = New-Item -Path temp: -Name script.ps1 -Force -Value "Write-Host test"
+
+        $setParams = @{
+            Path = $scriptPath
+            Certificate = $certECDSA
+            HashAlgorithm = $Name
+        }
+        $res = Set-OpenAuthenticodeSignature @setParams
+        $res | Should -BeNullOrEmpty
+
+        $actual = Get-OpenAuthenticodeSignature -Path $scriptPath @trustParams
+        $actual | Should -BeOfType ([System.Security.Cryptography.Pkcs.SignedCms])
+        $actual.Path | Should -Be $scriptPath.FullName
+        $actual.HashAlgorithm | Should -Be $Name
+        $actual.TimeStampInfo | Should -BeNullOrEmpty
+        $actual.Certificate.Thumbprint | Should -Be $certECDSA.Thumbprint
 
         If (Get-Command -Name Get-AuthenticodeSignature -ErrorAction Ignore) {
             $actual = Get-AuthenticodeSignature -FilePath $scriptPath.FullName

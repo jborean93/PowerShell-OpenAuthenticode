@@ -249,9 +249,9 @@ public record CounterSignature(X509Certificate2 Certificate, HashAlgorithmName H
     DateTime TimeStamp);
 
 
-internal sealed class CaptureHashKey : RSA
+internal sealed class RSACaptureHashKey : RSA
 {
-    public CaptureHashKey() { }
+    public RSACaptureHashKey() { }
 
     public override RSAParameters ExportParameters(bool includePrivateParameters)
         => throw new NotImplementedException();
@@ -262,6 +262,21 @@ internal sealed class CaptureHashKey : RSA
     public override byte[] SignHash(byte[] hash, HashAlgorithmName hashAlgorithm, RSASignaturePadding padding)
     {
         throw new CapturedHashException(hash);
+    }
+}
+
+internal sealed class ECDsaCaptureHashKey : ECDsa
+{
+    public ECDsaCaptureHashKey() { }
+
+    public override byte[] SignHash(byte[] hash)
+    {
+        throw new CapturedHashException(hash);
+    }
+
+    public override bool VerifyHash(byte[] hash, byte[] signature)
+    {
+        throw new NotImplementedException();
     }
 }
 

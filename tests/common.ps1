@@ -26,15 +26,45 @@ Function global:New-X509Certificate {
 
         [Parameter()]
         [System.Security.Cryptography.X509Certificates.X509Extension[]]
-        $Extension
+        $Extension,
+
+        [Parameter()]
+        [string]
+        $KeyAlgorithm = 'RSA'
     )
 
-    $key = [System.Security.Cryptography.RSA]::Create(4096)
-    $request = [System.Security.Cryptography.X509Certificates.CertificateRequest]::new(
-        $Subject,
-        $key,
-        $HashAlgorithm,
-        [System.Security.Cryptography.RSASignaturePadding]::Pkcs1)
+    if ($KeyAlgorithm -eq 'RSA') {
+        $key = [System.Security.Cryptography.RSA]::Create(4096)
+        $copyFunc = { [System.Security.Cryptography.X509Certificates.RSACertificateExtensions]::CopyWithPrivateKey($args[0], $key) }
+        $request = [System.Security.Cryptography.X509Certificates.CertificateRequest]::new(
+            $Subject,
+            $key,
+            $HashAlgorithm,
+            [System.Security.Cryptography.RSASignaturePadding]::Pkcs1)
+    }
+    elseif ($KeyAlgorithm.StartsWith('ECDSA_', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $curve = [System.Security.Cryptography.ECCurve]::CreateFromFriendlyName($KeyAlgorithm.Substring(6))
+        $key = [System.Security.Cryptography.ECDsa]::Create($curve)
+        $copyFunc = { [System.Security.Cryptography.X509Certificates.ECDsaCertificateExtensions]::CopyWithPrivateKey($args[0], $key) }
+        $request = [System.Security.Cryptography.X509Certificates.CertificateRequest]::new(
+            $Subject,
+            $key,
+            $HashAlgorithm)
+    }
+    elseif ($KeyAlgorithm.StartsWith('ECDH_', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $curve = [System.Security.Cryptography.ECCurve+NamedCurves]::nistP256
+        # $curve = [System.Security.Cryptography.ECCurve]::CreateFromFriendlyName($KeyAlgorithm.Substring(5))
+        $key = [System.Security.Cryptography.ECDiffieHellman]::Create($curve)
+        # $copyFunc = { $args[0].CopyWithPrivateKey($key) }
+        $copyFunc = $null
+        $request = [System.Security.Cryptography.X509Certificates.CertificateRequest]::new(
+            $Subject,
+            [System.Security.Cryptography.X509Certificates.PublicKey]::new($key),
+            $HashAlgorithm)
+    }
+    else {
+        throw "Unsupported KeyAlgorithm '$KeyAlgorithm'"
+    }
 
     $Extension | ForEach-Object { $request.CertificateExtensions.Add($_) }
     $request.CertificateExtensions.Add(
@@ -68,9 +98,13 @@ Function global:New-X509Certificate {
         $cert = $request.Create($Issuer, $notBefore, $notAfter, $serialNumber)
 
         # For whatever reason Create does not create an X509 cert with the private key.
-        [System.Security.Cryptography.X509Certificates.RSACertificateExtensions]::CopyWithPrivateKey(
-            $cert,
-            $key)
+        if ($copyFunc) {
+            &$copyFunc $cert
+        }
+        else {
+            $cert
+        }
+        # &$copyFunc $cert
     }
     else {
         $notBefore = [DateTimeOffset]::UtcNow.AddDays(-1)
@@ -91,7 +125,11 @@ Function global:New-CodeSigningCert {
 
         [Parameter()]
         [System.Security.Cryptography.X509Certificates.X509Certificate2]
-        $Issuer
+        $Issuer,
+
+        [Parameter()]
+        [string]
+        $KeyAlgorithm = 'RSA'
     )
 
     $enhancedKeyUsageOids = [System.Security.Cryptography.OidCollection]::new()

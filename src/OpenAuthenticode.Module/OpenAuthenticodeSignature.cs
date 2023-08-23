@@ -490,7 +490,26 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
         // they send the request. To make this more efficient and to avoid
         // prompting for user input per file we get these hashes to provide
         // to the custom key before actually signing the data.
-        CaptureHashKey captureKey = new();
+        AsymmetricAlgorithm? captureKey = GetCapturingKey(cert);
+        if (captureKey == null)
+        {
+            string pubKeyOid = cert.PublicKey.Oid.Value ?? "";
+            if (!string.IsNullOrWhiteSpace(cert.PublicKey.Oid.FriendlyName))
+            {
+                pubKeyOid += $" - {cert.PublicKey.Oid.FriendlyName}";
+            }
+
+            string msg = $"Unknown certificate algorithm requested '{pubKeyOid}', cannot use this certificate for signing";
+            ErrorRecord err = new(
+                new ArgumentException(msg),
+                "SetSignatureUnknownCertificateAlgorithm",
+                ErrorCategory.InvalidArgument,
+                cert
+            );
+            ThrowTerminatingError(err);
+            return;
+        }
+
         List<HashOperation> operations = new();
 
         foreach ((string path, ProviderInfo psProvider) in paths)
@@ -593,7 +612,7 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
                     HashAlgorithm,
                     cert,
                     IncludeOption,
-                    Key?.Key,
+                    key,
                     TimeStampServer,
                     TimeStampHashAlgorithm,
                     Silent);
@@ -623,6 +642,22 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
                 continue;
             }
         }
+    }
+
+    private static AsymmetricAlgorithm? GetCapturingKey(X509Certificate2 certificate)
+    {
+        // Dotnet only supports DSA, RSA, and ECDSA right now. DSA isn't used
+        // anymore so we only care about RSA and ECDSA.
+        if (certificate.PublicKey.GetRSAPublicKey() != null)
+        {
+            return new RSACaptureHashKey();
+        }
+        else if (certificate.PublicKey.GetECDsaPublicKey() != null)
+        {
+            return new ECDsaCaptureHashKey();
+        }
+
+        return null;
     }
 }
 

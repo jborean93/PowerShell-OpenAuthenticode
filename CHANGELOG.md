@@ -1,5 +1,9 @@
 # Changelog for OpenAuthenticode
 
+## v0.4.0 - TBD
+
+* Fix support for ECDSA based key that was broken in `v0.3.0`
+
 ## v0.3.0 - 2023-08-24
 
 * Reworked Assembly Load Context to properly store extra dlls in new ALC
