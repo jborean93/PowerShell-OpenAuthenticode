@@ -449,7 +449,7 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
 
     [Parameter()]
     [ArgumentCompletions("SHA1", "SHA256", "SHA384", "SHA512")]
-    public HashAlgorithmName HashAlgorithm { get; set; } = HashAlgorithmName.SHA256;
+    public HashAlgorithmName? HashAlgorithm { get; set; }
 
     [Parameter()]
     public X509IncludeOption IncludeOption { get; set; } = X509IncludeOption.ExcludeRoot;
@@ -511,6 +511,7 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
         }
 
         List<HashOperation> operations = new();
+        HashAlgorithmName hashAlgo = HashAlgorithm ?? Key?.DefaultHashAlgorithm ?? HashAlgorithmName.SHA256;
 
         foreach ((string path, ProviderInfo psProvider) in paths)
         {
@@ -549,7 +550,7 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
                     provider = ProviderFactory.Create(ext, fileData, fileEncoding: Encoding);
                 }
 
-                Oid digestOid = SpcIndirectData.OidFromHashAlgorithm(HashAlgorithm);
+                Oid digestOid = SpcIndirectData.OidFromHashAlgorithm(hashAlgo);
                 SpcIndirectData dataContent = provider.HashData(digestOid);
                 ContentInfo ci = new(SpcIndirectData.OID, dataContent.GetBytes());
                 AsnEncodedData[] attributesToSign = provider.GetAttributesToSign();
@@ -564,7 +565,7 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
                     SignatureHelper.CreateSignature(
                         ci,
                         attributesToSign,
-                        HashAlgorithm,
+                        hashAlgo,
                         cert,
                         IncludeOption,
                         captureKey,
@@ -574,7 +575,7 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
                 }
                 catch (CapturedHashException e)
                 {
-                    Key?.RegisterHashToSign(e.Hash, fileData, HashAlgorithm);
+                    Key?.RegisterHashToSign(e.Hash, fileData, hashAlgo);
                     operations.Add(new(path, provider, fileData, e.Hash, ci, digestOid, attributesToSign));
                     continue;
                 }
@@ -605,11 +606,11 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
         {
             try
             {
-                WriteVerbose($"Setting file '{operation.Path}' signature with provider {operation.Provider.Provider} with {HashAlgorithm.Name} and timestamp server '{TimeStampServer}'");
+                WriteVerbose($"Setting file '{operation.Path}' signature with provider {operation.Provider.Provider} with {hashAlgo.Name} and timestamp server '{TimeStampServer}'");
                 SignedCms signInfo = SignatureHelper.CreateSignature(
                     operation.Content,
                     operation.SignedAttributes,
-                    HashAlgorithm,
+                    hashAlgo,
                     cert,
                     IncludeOption,
                     key,

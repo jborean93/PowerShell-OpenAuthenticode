@@ -114,5 +114,30 @@ $signParams = @{
 Set-OpenAuthenticodeSignature -FilePath $path @signParams
 ```
 
+If the [Az.Accounts](https://www.powershellgallery.com/packages/Az.Accounts/) module is installed it can be used to authenticate with Azure using the parameters it exposed.
+Once authenticated the `Get-OpenAuthenticodeAzKey` will reuse that authenticated context when retrieving the key.
+
+```powershell
+$credInfo = ConvertFrom-Json -InputObject $env:AZURE_CREDENTIALS
+$vaultName = $credInfo.vaultName
+$vaultCert = $credInfo.vaultCert
+$cred = ... # Left up to the reader to build
+
+$connectParams = @{
+    TenantId = $credInfo.tenantId
+    ServicePrincipal = $true
+    Credential = $cred
+}
+Connect-AzAccount @connectParams
+
+$key = Get-OpenAuthenticodeAzKey -Vault $vaultName -Certificate $vaultCert
+$signParams = @{
+    Key = $key
+    TimeStampServer = 'http://timestamp.digicert.com'
+    HashAlgorithm = 'SHA256'
+}
+Set-OpenAuthenticodeSignature -FilePath $path @signParams
+```
+
 In this example the output json from the bash script has been stored in the environment variable `AZURE_CREDENTIALS`.
 Ensure the credentials json is stored securely so that it cannot be used for any unauthorised signing operations.

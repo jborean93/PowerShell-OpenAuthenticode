@@ -51,17 +51,17 @@ Function global:New-X509Certificate {
             $key,
             $HashAlgorithm)
     }
-    elseif ($KeyAlgorithm.StartsWith('ECDH_', [System.StringComparison]::OrdinalIgnoreCase)) {
-        $curve = [System.Security.Cryptography.ECCurve+NamedCurves]::nistP256
-        # $curve = [System.Security.Cryptography.ECCurve]::CreateFromFriendlyName($KeyAlgorithm.Substring(5))
-        $key = [System.Security.Cryptography.ECDiffieHellman]::Create($curve)
-        # $copyFunc = { $args[0].CopyWithPrivateKey($key) }
-        $copyFunc = $null
-        $request = [System.Security.Cryptography.X509Certificates.CertificateRequest]::new(
-            $Subject,
-            [System.Security.Cryptography.X509Certificates.PublicKey]::new($key),
-            $HashAlgorithm)
-    }
+    # I don't know too much about algorithms but ECDH and ECDSA seem to be the same
+    # I think ECDH is just the public key algorithm or something
+    # elseif ($KeyAlgorithm.StartsWith('ECDH_', [System.StringComparison]::OrdinalIgnoreCase)) {
+    #     $curve = [System.Security.Cryptography.ECCurve]::CreateFromFriendlyName($KeyAlgorithm.Substring(5))
+    #     $key = [System.Security.Cryptography.ECDiffieHellman]::Create($curve)
+    #     $copyFunc = { $args[0].CopyWithPrivateKey($key) }
+    #     $request = [System.Security.Cryptography.X509Certificates.CertificateRequest]::new(
+    #         $Subject,
+    #         [System.Security.Cryptography.X509Certificates.PublicKey]::new($key),
+    #         $HashAlgorithm)
+    # }
     else {
         throw "Unsupported KeyAlgorithm '$KeyAlgorithm'"
     }
@@ -98,13 +98,7 @@ Function global:New-X509Certificate {
         $cert = $request.Create($Issuer, $notBefore, $notAfter, $serialNumber)
 
         # For whatever reason Create does not create an X509 cert with the private key.
-        if ($copyFunc) {
-            &$copyFunc $cert
-        }
-        else {
-            $cert
-        }
-        # &$copyFunc $cert
+        &$copyFunc $cert
     }
     else {
         $notBefore = [DateTimeOffset]::UtcNow.AddDays(-1)

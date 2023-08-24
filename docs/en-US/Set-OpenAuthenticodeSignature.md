@@ -149,7 +149,8 @@ Accept wildcard characters: False
 
 ### -HashAlgorithm
 The hashing algorithm to use when generating the Authenticode signature.
-This defaults to SHA256 if not specified.
+If a `-Key` was specified and had a set default hash algorithm, that algorithm will be used as the default.
+If no `-Key` was specified, or the key had no default hash algorithm, `SHA256` will be used.
 
 Known algorithms are:
 
