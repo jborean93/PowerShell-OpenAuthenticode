@@ -21,6 +21,11 @@ public abstract class KeyProvider
     /// </summary>
     internal abstract AsymmetricAlgorithm Key { get; }
 
+    /// <summary>
+    /// The hash algorithm to use for this key if none was specified.
+    /// </summary>
+    internal virtual HashAlgorithmName? DefaultHashAlgorithm { get; } = null;
+
     internal virtual void RegisterHashToSign(Span<byte> hash, Span<byte> content, HashAlgorithmName hashAlgorithm)
     { }
 

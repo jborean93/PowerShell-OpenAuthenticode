@@ -32,6 +32,7 @@ The certificate must also have the Key Usage of `Digital Signature (80)` and Enh
 
 Currently authentication relies on the lookup behaviour of [DefaultAzureCredential](https://learn.microsoft.com/en-us/dotnet/api/overview/azure/identity-readme?view=azure-dotnet).
 It will lookup environment variables, device managed identities, az cli contexts, etc to authenticate with Azure.
+If the [Az.Accounts](https://www.powershellgallery.com/packages/Az.Accounts/) PowerShell module has been installed, the [Connect-AzAccount](https://learn.microsoft.com/en-us/powershell/module/az.accounts/connect-azaccount?view=azps-10.2.0) cmdlet can be used to authenticate the session before this cmdlet is called.
 It has not been set to allow for interactive authentication through the web browser.
 
 See [about_AuthenticodeAzureKeys](./about_AuthenticodeAzureKeys.md) for more information on how a key can be used to sign files.
@@ -93,6 +94,9 @@ None
 The AzureKey object that can be used with the `-Key` parameter in `Set-OpenAuthenticodeSignature`.
 
 ## NOTES
+Both RSA and ECDSA keys are supported with this cmdlet.
+When using an ECDSA key with `Set-OpenAuthenticodeSignature`, the `-HashAlgorithm` parameter used needs to match the ECDSA key digest size.
+Omit the `-HashAlgorithm` parameter for the cmdlet to use the correct hash algorithm.
 
 ## RELATED LINKS
 

@@ -3,6 +3,7 @@
 ## v0.4.0 - TBD
 
 * Fix support for ECDSA based key that was broken in `v0.3.0`
+* Add support for ECDSA keys from Azure using `Get-OpenAuthenticodeAzKey`
 
 ## v0.3.0 - 2023-08-24
 
