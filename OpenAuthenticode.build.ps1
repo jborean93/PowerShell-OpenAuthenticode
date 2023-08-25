@@ -84,28 +84,18 @@ task CopyToRelease {
 }
 
 task Sign {
-    if (-not $env:AZURE_KEYVAULT_CREDENTIALS) {
+    $vaultName = $env:AZURE_KEYVAULT_NAME
+    $vaultCert = $env:AZURE_KEYVAULT_CERT
+    if (-not $vaultName -or -not $vaultCert) {
         return
     }
 
     Import-Module -Name (Join-Path $ReleasePath "$ModuleName.psd1") -ErrorAction Stop
 
-    $credInfo = ConvertFrom-Json -InputObject $env:AZURE_KEYVAULT_CREDENTIALS
-    $vaultName = $credInfo.vaultName
-    $vaultCert = $credInfo.vaultCert
-
-    $env:AZURE_CLIENT_ID = $credInfo.clientId
-    $env:AZURE_CLIENT_SECRET = $credInfo.clientSecret
-    $env:AZURE_TENANT_ID = $credInfo.tenantId
     $key = Get-OpenAuthenticodeAzKey -Vault $vaultName -Certificate $vaultCert
-    $env:AZURE_CLIENT_ID = ''
-    $env:AZURE_CLIENT_SECRET = ''
-    $env:AZURE_TENANT_ID = ''
-
     $signParams = @{
         Key = $key
         TimeStampServer = 'http://timestamp.digicert.com'
-        HashAlgorithm = 'SHA256'
     }
 
     Get-ChildItem -LiteralPath $ReleasePath -Recurse -ErrorAction SilentlyContinue |
