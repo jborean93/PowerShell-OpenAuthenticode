@@ -69,12 +69,12 @@ fi
 
 PRINCIPAL_INFO="$(
     az ad sp create-for-rbac \
-    --name "${APP_NAME}" \
+        --name "${APP_NAME}"
 )"
 
 AZURE_CREDENTIALS="$(
     echo "${PRINCIPAL_INFO}" |
-    jq -r "{clientId: .appId, clientSecret: .password, tenantId: .tenant, vaultName: \"${VAULT_NAME}\", vaultCert: \"${VAULT_CERT}\"}"
+    jq -r "{AZURE_CLIENT_ID: .appId, AZURE_CLIENT_SECRET: .password, AZURE_TENANT_ID: .tenant, AZURE_SUBSCRIPTION_ID: \"${SUBSCRIPTION_ID}\", AZURE_VAULT_NAME: \"${VAULT_NAME}\", AZURE_VAULT_CERT: \"${VAULT_CERT}\"}"
 )"
 CLIENT_ID="$(
     echo "${PRINCIPAL_INFO}" |
@@ -86,7 +86,7 @@ az role assignment create \
     --role "${ROLE_ID}" \
     --scope "/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP}/providers/Microsoft.KeyVault/vaults/${VAULT_NAME}" > /dev/null
 
-echo "Save this json as your GitHub Actions secret"
+echo "These details should be saved as a secret where needed"
 echo "${AZURE_CREDENTIALS}"
 ```
 
@@ -95,12 +95,12 @@ The resulting json contains all the information needed to sign files using OpenA
 ```powershell
 # AZURE_CREDENTIALS contains the json from the above script
 $credInfo = ConvertFrom-Json -InputObject $env:AZURE_CREDENTIALS
-$vaultName = $credInfo.vaultName
-$vaultCert = $credInfo.vaultCert
+$vaultName = $credInfo.AZURE_VAULT_NAME
+$vaultCert = $credInfo.AZURE_VAULT_CERT
 
-$env:AZURE_CLIENT_ID = $credInfo.clientId
-$env:AZURE_CLIENT_SECRET = $credInfo.clientSecret
-$env:AZURE_TENANT_ID = $credInfo.tenantId
+$env:AZURE_CLIENT_ID = $credInfo.AZURE_CLIENT_ID
+$env:AZURE_CLIENT_SECRET = $credInfo.AZURE_CLIENT_SECRET
+$env:AZURE_TENANT_ID = $credInfo.AZURE_TENANT_ID
 $key = Get-OpenAuthenticodeAzKey -Vault $vaultName -Certificate $vaultCert
 $env:AZURE_CLIENT_ID = ''
 $env:AZURE_CLIENT_SECRET = ''
@@ -114,17 +114,113 @@ $signParams = @{
 Set-OpenAuthenticodeSignature -FilePath $path @signParams
 ```
 
-If the [Az.Accounts](https://www.powershellgallery.com/packages/Az.Accounts/) module is installed it can be used to authenticate with Azure using the parameters it exposed.
-Once authenticated the `Get-OpenAuthenticodeAzKey` will reuse that authenticated context when retrieving the key.
+In this example the output json from the bash script has been stored in the environment variable `AZURE_CREDENTIALS`.
+Ensure the credentials json is stored securely so that it cannot be used for any unauthorised signing operations.
+
+If using GitHub Actions it is possible to not need the `AZURE_CLIENT_SECRET` and use [Open ID Connect](https://learn.microsoft.com/en-us/azure/active-directory/develop/v2-protocols-oidc) (`OIDC`) for authentication.
+It is highly recommended to use `OIDC` when available as the client secret does not need to be stored in the repo.
+GitHub will use `OIDC` to generate a short lived authentication token using the grants given to the service principal.
+The following code can be used to add a federated credential that gives access to a GitHub Action workflow running on the `main` branch of the repo.
+
+```bash
+# The name of the app principal to add the federated credential for
+APP_NAME="..."
+
+# The GitHub username the repo is in
+GH_USER="..."
+
+# The GitHub repo name for the user specified
+GH_REPO="..."
+
+# The GitHub repo branch to grant access to
+GH_BRANCH="main"
+
+OBJECT_ID="$(
+    az ad app list \
+        --display-name "${APP_NAME}" |
+    jq -r '.[].id'
+)"
+
+az ad app federated-credential create \
+    --id "${OBJECT_ID}" \
+    --parameters @- << EOF
+{
+    "name": "OpenAuthenticode-${GH_USER}-${GH_REPO}-Branch-${GH_BRANCH}",
+    "issuer": "https://token.actions.githubusercontent.com",
+    "subject": "repo:${GH_USER}/${GH_REPO}:ref:refs/heads/${GH_BRANCH}",
+    "description": "GitHub Actions OpenAuthenticode for git@github.com:${GH_USER}/${GH_REPO} refs/heads/${GH_BRANCH}",
+    "audiences": [
+        "api://AzureADTokenExchange"
+    ]
+}
+EOF
+```
+
+It is possible to setup a federated credential with a tag, environment, or pull request, see [GitHub Actions federated identity](https://learn.microsoft.com/en-us/azure/active-directory/workload-identities/workload-identity-federation-create-trust?pivots=identity-wif-apps-methods-azp#github-actions) for more details.
+There is currently a limit of 20 federated credentials per principal, simply create a new principal if this limit is reached.
+Once the federated credential has been created it can be used in GitHub Actions like the following:
+
+```yaml
+...
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    permissions:
+      # Needed for Azure OIDC authentication
+      id-token: write
+      # Needed to checkout repository
+      contents: read
+
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v3
+
+    - name: OIDC Login to Azure
+      if: github.ref == 'refs/heads/main'
+      uses: azure/login@v1
+      with:
+        client-id: ${{ secrets.AZURE_CLIENT_ID }}
+        tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+        subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+    - name: Sign module
+      if: github.ref == 'refs/heads/main'
+      shell: pwsh
+      run: |
+        Install-Module -Name OpenAuthenticode -Force
+        Import-Module OpenAuthenticode
+
+        $keyParams = @{
+            VaultName = '${{ secrets.AZURE_VAULT_NAME }}'
+            Certificate = '${{ secrets.AZURE_VAULT_CERT_NAME }}'
+        }
+        $key = Get-OpenAuthenticodeAzKey @keyParams
+
+        $signParams = @{
+            Key = $key
+            TimeStampServer = 'http://timestamp.digicert.com'
+            Verbose = $true
+        }
+        Set-OpenAuthenticodeSignature @signParams -FilePath '...'
+...
+```
+
+The claim generated ensures only runs for commits to the `main` branch of that repo can authenticate with Azure.
+See [TestAzureCodeOIDC](https://github.com/jborean93/TestAzureCodeOIDC) for a full example of how it can be integrated.
+
+If the [Az.Accounts](https://www.powershellgallery.com/packages/Az.Accounts/) module is installed it can be used to authenticate with Azure using the parameters it exposes.
+Once authenticated the `Get-OpenAuthenticodeAzKey` cmdlet will reuse that authenticated context when retrieving the key.
 
 ```powershell
 $credInfo = ConvertFrom-Json -InputObject $env:AZURE_CREDENTIALS
-$vaultName = $credInfo.vaultName
-$vaultCert = $credInfo.vaultCert
+$vaultName = $credInfo.AZURE_VAULT_NAME
+$vaultCert = $credInfo.AZURE_VAULT_CERT
 $cred = ... # Left up to the reader to build
 
 $connectParams = @{
-    TenantId = $credInfo.tenantId
+    TenantId = $credInfo.AZURE_VAULT_TENANT_ID
     ServicePrincipal = $true
     Credential = $cred
 }
@@ -138,6 +234,3 @@ $signParams = @{
 }
 Set-OpenAuthenticodeSignature -FilePath $path @signParams
 ```
-
-In this example the output json from the bash script has been stored in the environment variable `AZURE_CREDENTIALS`.
-Ensure the credentials json is stored securely so that it cannot be used for any unauthorised signing operations.
