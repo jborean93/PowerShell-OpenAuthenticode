@@ -1,6 +1,6 @@
 # Changelog for OpenAuthenticode
 
-## v0.4.0 - TBD
+## v0.4.0 - 2023-08-25
 
 * Fix support for ECDSA based key that was broken in `v0.3.0`
 * Add support for ECDSA keys from Azure using `Get-OpenAuthenticodeAzKey`
