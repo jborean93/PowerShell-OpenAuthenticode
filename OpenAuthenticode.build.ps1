@@ -174,16 +174,14 @@ task DoUnitTest {
             'test'
             $testsPath
             '--results-directory', $tempResultsPath
-            if ($Configuration -eq 'Debug') {
-                '--collect:"XPlat Code Coverage"'
-                '--'
-                "$runSettingsPrefix.Format=json"
-                if ($UseNativeArguments) {
-                    "$runSettingsPrefix.IncludeDirectory=`"$CSharpPath`""
-                }
-                else {
-                    "$runSettingsPrefix.IncludeDirectory=\`"$CSharpPath\`""
-                }
+            '--collect:"XPlat Code Coverage"'
+            '--'
+            "$runSettingsPrefix.Format=json"
+            if ($UseNativeArguments) {
+                "$runSettingsPrefix.IncludeDirectory=`"$CSharpPath`""
+            }
+            else {
+                "$runSettingsPrefix.IncludeDirectory=\`"$CSharpPath\`""
             }
         )
 
@@ -194,9 +192,7 @@ task DoUnitTest {
             throw "Unit tests failed"
         }
 
-        if ($Configuration -eq 'Debug') {
-            Move-Item -Path $tempResultsPath/*/*.json -Destination $resultsPath/UnitCoverage.json -Force
-        }
+        Move-Item -Path $tempResultsPath/*/*.json -Destination $resultsPath/UnitCoverage.json -Force
     }
     finally {
         Remove-Item -LiteralPath $tempResultsPath -Force -Recurse
@@ -227,33 +223,30 @@ task DoTest {
         '-OutputFile', $resultsFile
     )
 
-    if ($Configuration -eq 'Debug') {
-        # We use coverlet to collect code coverage of our binary
-        $unitCoveragePath = [IO.Path]::Combine($resultsPath, 'UnitCoverage.json')
-        $targetArgs = '"' + ($arguments -join '" "') + '"'
+    # We use coverlet to collect code coverage of our binary
+    $unitCoveragePath = [IO.Path]::Combine($resultsPath, 'UnitCoverage.json')
+    $targetArgs = '"' + ($arguments -join '" "') + '"'
 
-        if ($UseNativeArguments) {
-            $watchFolder = [IO.Path]::Combine($ReleasePath, 'bin', $PSFramework)
-        }
-        else {
-            $targetArgs = '"' + ($targetArgs -replace '"', '\"') + '"'
-            $watchFolder = '"{0}"' -f ([IO.Path]::Combine($ReleasePath, 'bin', $PSFramework))
-        }
-
-        $arguments = @(
-            $watchFolder
-            '--target', $pwsh
-            '--targetargs', $targetArgs
-            '--output', ([IO.Path]::Combine($resultsPath, 'Coverage.xml'))
-            '--format', 'cobertura'
-            if (Test-Path -LiteralPath $unitCoveragePath) {
-                '--merge-with', $unitCoveragePath
-            }
-        )
-        $pwsh = 'coverlet'
+    if ($UseNativeArguments) {
+        $watchFolder = [IO.Path]::Combine($ReleasePath, 'bin', $PSFramework)
+    }
+    else {
+        $targetArgs = '"' + ($targetArgs -replace '"', '\"') + '"'
+        $watchFolder = '"{0}"' -f ([IO.Path]::Combine($ReleasePath, 'bin', $PSFramework))
     }
 
-    &$pwsh $arguments
+    $arguments = @(
+        $watchFolder
+        '--target', $pwsh
+        '--targetargs', $targetArgs
+        '--output', ([IO.Path]::Combine($resultsPath, 'Coverage.xml'))
+        '--format', 'cobertura'
+        if (Test-Path -LiteralPath $unitCoveragePath) {
+            '--merge-with', $unitCoveragePath
+        }
+    )
+
+    & coverlet @arguments
     if ($LASTEXITCODE) {
         throw "Pester failed tests"
     }
