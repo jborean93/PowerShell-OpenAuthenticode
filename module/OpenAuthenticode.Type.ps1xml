@@ -22,7 +22,7 @@
       <CodeProperty>
         <Name>TimeStampInfo</Name>
         <GetCodeReference>
-          <TypeName>OpenAuthenticode.SignatureHelper</TypeName>
+          <TypeName>OpenAuthenticode.Shared.SignatureHelper</TypeName>
           <MethodName>GetCounterSignature</MethodName>
         </GetCodeReference>
       </CodeProperty>

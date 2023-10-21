@@ -1,5 +1,10 @@
 # Changelog for OpenAuthenticode
 
+## v0.5.0 - TBD
+
+* Include [System.Security.Cryptography.Pkcs](https://www.nuget.org/packages/System.Security.Cryptography.Pkcs) in the Shared module deps
+  * This will be loaded in an assembly Load Context so it can use a newer version than what PowerShell ships with and support newer features/bugfixes
+
 ## v0.4.0 - 2023-08-25
 
 * Fix support for ECDSA based key that was broken in `v0.3.0`

@@ -3,7 +3,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.Loader;
 
-[assembly: InternalsVisibleTo("OpenAuthenticode.Module")]
+[assembly: InternalsVisibleTo("OpenAuthenticode.Shared")]
 
 namespace OpenAuthenticode;
 
@@ -62,7 +62,7 @@ public class LoadContext : AssemblyLoadContext
             string assemblyPath = typeof(LoadContext).Assembly.Location;
             string modulePath = Path.Combine(
                 Path.GetDirectoryName(assemblyPath)!,
-                $"{Path.GetFileNameWithoutExtension(assemblyPath)}.Module.dll"
+                $"{Path.GetFileNameWithoutExtension(assemblyPath)}.Shared.dll"
             );
             _instance = new LoadContext(modulePath);
             return _instance._moduleAssembly;
