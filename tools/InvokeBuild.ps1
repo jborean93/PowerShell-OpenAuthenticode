@@ -69,7 +69,7 @@ task Sign {
         return
     }
 
-    Import-Module -Name (Join-Path $Manifest.PowerShellPath "$($Manifest.Module.Name).psd1") -ErrorAction Stop
+    Import-Module -Name (Join-Path $Manifest.ReleasePath "$($Manifest.Module.Name).psd1") -ErrorAction Stop
 
     Write-Host "Authenticating with Azure KeyVault '$vaultName' for signing" -ForegroundColor Cyan
     $key = Get-OpenAuthenticodeAzKey -Vault $vaultName -Certificate $vaultCert

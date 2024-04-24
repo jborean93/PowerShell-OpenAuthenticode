@@ -1,5 +1,9 @@
 # Changelog for OpenAuthenticode
 
+## v0.5.0 - TBD
+
+* Bump the Azure and OTP dependencies to the latest version available
+
 ## v0.4.0 - 2023-08-25
 
 * Fix support for ECDSA based key that was broken in `v0.3.0`
