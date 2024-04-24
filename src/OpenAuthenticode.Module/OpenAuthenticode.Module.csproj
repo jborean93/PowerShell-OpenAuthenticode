@@ -5,6 +5,11 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(GITHUB_ACTIONS)' == 'true'">
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="System.Management.Automation" Version="7.2.0" PrivateAssets="all" />
     <PackageReference Include="Azure.Identity" Version="1.8.2" />
@@ -13,4 +18,9 @@
     <PackageReference Include="Otp.NET" Version="1.3.0" />
     <ProjectReference Include="../OpenAuthenticode/OpenAuthenticode.csproj" />
   </ItemGroup>
+
+  <ItemGroup Condition="'$(GITHUB_ACTIONS)' == 'true'">
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="all"/>
+  </ItemGroup>
+
 </Project>
