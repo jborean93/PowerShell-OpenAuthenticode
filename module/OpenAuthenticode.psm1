@@ -13,7 +13,7 @@ $isReload = $true
 if (-not ('OpenAuthenticode.LoadContext' -as [type])) {
     $isReload = $false
 
-    Add-Type -Path ([System.IO.Path]::Combine($PSScriptRoot, 'bin', 'net6.0', "$moduleName.dll"))
+    Add-Type -Path ([System.IO.Path]::Combine($PSScriptRoot, 'bin', 'net8.0', "$moduleName.dll"))
 }
 
 $mainModule = [OpenAuthenticode.LoadContext]::Initialize()

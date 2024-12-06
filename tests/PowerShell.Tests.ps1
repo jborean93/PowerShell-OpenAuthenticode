@@ -506,25 +506,42 @@ Describe "PowerShell Authenticode" {
         $actual.Certificate.NotAfter | Should -BeLessThan ([DateTime]::Now)
     }
 
-    It "Signs file with windows-1252 encoding" {
+    It "Signs file with windows-1252 encoding - <Scenario>" -TestCases @(
+        @{
+            Scenario = 'UTF-8 sequence present before 32 bytes'
+            Content = "#test $([char]0xC3)$([char]0xA9)`n"
+        }
+        @{
+            Scenario = 'UTF-8 sequence present after 32 bytes'
+            Content = "$('a' * 31)$([char]0xE9)"
+        }
+        @{
+            Scenario = 'Invalid UTF-8 sequence before 32 bytes'
+            Content = "#test $([char]0xC3)$([char]0xA9) $([char]0xE9)"
+        }
+        @{
+            Scenario = 'Signed octet with invalid UTF-8 length'
+            Content = "$([char]0x20AC)test"
+        }
+        @{
+            Scenario = 'No non-ASCII chars'
+            Content = "Write-Host cafe`n"
+        }
+    ) {
+        param($Content)
+
         $scriptPath = New-Item -Path temp: -Name script.ps1 -Force
         $encoding = [System.Text.Encoding]::GetEncoding([CultureInfo]::CurrentCulture.TextInfo.ANSICodePage)
-        [System.IO.File]::WriteAllText($scriptPath.FullName, "Write-Host caf$([char]0x00E9)`n", $encoding)
+        [System.IO.File]::WriteAllText($scriptPath.FullName, $Content, $encoding)
 
         $setParams = @{
             Path = $scriptPath
             Certificate = $cert
-            Encoding = $encoding
         }
         $res = Set-OpenAuthenticodeSignature @setParams
         $res | Should -BeNullOrEmpty
 
-        # On Linux the default encoding without a BOM is UTF-8 so this will fail validation
-        $actual = Get-OpenAuthenticodeSignature -Path $scriptPath -ErrorAction SilentlyContinue -ErrorVariable err @trustParams
-        $err.Count | Should -Be 1
-        [string]$err[0] | Should -BeLike 'Signature mismatch: * != *'
-
-        $actual = Get-OpenAuthenticodeSignature -Path $scriptPath -Encoding ANSI @trustParams
+        $actual = Get-OpenAuthenticodeSignature -Path $scriptPath @trustParams
         $actual | Should -BeOfType ([System.Security.Cryptography.Pkcs.SignedCms])
         $actual.Path | Should -Be $scriptPath.FullName
         $actual.HashAlgorithm | Should -Be SHA256
@@ -604,6 +621,46 @@ Describe "PowerShell Authenticode" {
         $res | Should -BeNullOrEmpty
 
         $actual = Get-OpenAuthenticodeSignature -Path $scriptPath @trustParams
+        $actual | Should -BeOfType ([System.Security.Cryptography.Pkcs.SignedCms])
+        $actual.Path | Should -Be $scriptPath.FullName
+        $actual.HashAlgorithm | Should -Be SHA256
+        $actual.TimeStampInfo | Should -BeNullOrEmpty
+        $actual.Certificate.Thumbprint | Should -Be $cert.Thumbprint
+
+        If (Get-Command -Name Get-AuthenticodeSignature -ErrorAction Ignore) {
+            $actual = Get-AuthenticodeSignature -FilePath $scriptPath.FullName
+            $actual.Status | Should -Not -Be HashMismatch
+        }
+    }
+
+    It "Signs file with explicit encoding <Encoding>" -TestCases @(
+        @{ Encoding = 'ASCII'; EncodingObject = [System.Text.Encoding]::ASCII }
+        @{ Encoding = 'BigEndianUnicode'; EncodingObject = [System.Text.UnicodeEncoding]::new($true, $true) }
+        @{ Encoding = 'ANSI'; EncodingObject = [System.Text.Encoding]::GetEncoding([CultureInfo]::CurrentCulture.TextInfo.ANSICodePage) }
+        @{ Encoding = 'BigEndianUtf32'; EncodingObject = [System.Text.UTF32Encoding]::new($true, $true) }
+        @{ Encoding = 'Unicode'; EncodingObject = [System.Text.UnicodeEncoding]::new() }
+        @{ Encoding = 'UTF8'; EncodingObject = [System.Text.UTF8Encoding]::new() }
+        @{ Encoding = 'UTF8Bom'; EncodingObject = [System.Text.UTF8Encoding]::new($true) }
+        @{ Encoding = 'UTF8NoBom'; EncodingObject = [System.Text.UTF8Encoding]::new($false) }
+        @{ Encoding = 'UTF32'; EncodingObject = [System.Text.UTF32Encoding]::new() }
+        @{ Encoding = 'windows-1252'; EncodingObject = [System.Text.Encoding]::GetEncoding('windows-1252') }
+        @{ Encoding = 65001; EncodingObject = [System.Text.UTF8Encoding]::new() }
+        @{ Encoding = [System.Text.UTF8Encoding]::new(); EncodingOBject = [System.Text.UTF8Encoding]::new() }
+    ) {
+        param($Encoding, $EncodingObject)
+
+        $scriptPath = New-Item -Path temp: -Name script.ps1 -Force
+        [System.IO.File]::WriteAllText($scriptPath.FullName, "Write-Host caf$([char]0x00E9)", $EncodingObject)
+
+        $setParams = @{
+            Path = $scriptPath
+            Certificate = $cert
+            Encoding = $Encoding
+        }
+        $res = Set-OpenAuthenticodeSignature @setParams
+        $res | Should -BeNullOrEmpty
+
+        $actual = Get-OpenAuthenticodeSignature -Path $scriptPath -Encoding $Encoding @trustParams
         $actual | Should -BeOfType ([System.Security.Cryptography.Pkcs.SignedCms])
         $actual.Path | Should -Be $scriptPath.FullName
         $actual.HashAlgorithm | Should -Be SHA256

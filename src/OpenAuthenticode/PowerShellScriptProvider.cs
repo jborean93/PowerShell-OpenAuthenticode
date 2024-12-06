@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
@@ -22,18 +23,8 @@ internal abstract class PowerShellProvider : IAuthenticodeProvider
 
     public abstract AuthenticodeProvider Provider { get; }
 
-    protected PowerShellProvider(byte[] data, Encoding? fileEncoding)
+    protected PowerShellProvider(byte[] data, Encoding fileEncoding)
     {
-        if (fileEncoding == null)
-        {
-            using (MemoryStream dataMs = new(data, 0, data.Length))
-            using (StreamReader reader = new(dataMs, true))
-            {
-                reader.Read();
-                fileEncoding = reader.CurrentEncoding;
-            }
-        }
-
         // We need to use GetString as StreamReader will remove the BOM if
         // present. GetString preserves the BOM in the string which is
         // important as it's part of the data to be hashed.
@@ -136,6 +127,100 @@ internal abstract class PowerShellProvider : IAuthenticodeProvider
         File.WriteAllText(path, content, new BOMLessEncoding(_fileEncoding));
     }
 
+    internal static Encoding GetScriptEncoding(ReadOnlySpan<byte> data)
+    {
+        // See this thread for some background info here.
+        // https://infosec.exchange/@Lee_Holmes/113601497325792033
+
+        // Check if there is a BOM present and use that to determine the
+        // encoding. Only UTF-16-LE, UTF-16-BE, and UTF-8 are checked in the
+        // PowerShell SIP implementation.
+        if (data.Length > 1)
+        {
+            if (data[0] == 0xFF && data[1] == 0xFE)
+            {
+                return new UnicodeEncoding(false, true);
+            }
+            else if (data[0] == 0xFE && data[1] == 0xFF)
+            {
+                return new UnicodeEncoding(true, true);
+            }
+            else if (data.Length > 2 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF)
+            {
+                return new UTF8Encoding(true);
+            }
+        }
+
+        // If no BOM is present the SIP then checks if the text is
+        // Unicode/UTF-16 without a BOM but as PowerShell won't even load such
+        // a script we ignore that check. The next check is to see if the first
+        // 32 bytes contains valid multibyte UTF-8 sequences.
+        if (data.Length > 32)
+        {
+            data = data[..32];
+        }
+
+        if (IsTextUTF8(data))
+        {
+            return new UTF8Encoding(false);
+        }
+        else
+        {
+            return Encoding.GetEncoding(CultureInfo.CurrentCulture.TextInfo.ANSICodePage);
+        }
+    }
+
+    internal static bool IsTextUTF8(ReadOnlySpan<byte> data)
+    {
+        bool containsExtendedChar = false;
+        int remainingOctets = 0;
+
+        foreach (byte b in data)
+        {
+            if (remainingOctets == 0)
+            {
+                if ((b & 0b10000000) == 0)
+                {
+                    // 7-bit ASCII character.
+                    continue;
+                }
+
+                containsExtendedChar = true;
+
+                // Get the octet count, the number of set leading bits is the
+                // count of octets for the sequence.
+                byte currentByte = b;
+                do
+                {
+                    currentByte <<= 1;
+                    remainingOctets++;
+                }
+                while ((currentByte & 0b10000000) != 0);
+
+                // The count includes this octet and must have at least 1 extra
+                // octet.
+                remainingOctets--;
+                if (remainingOctets == 0)
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                // Non-leading octets must start with 10000000
+                if ((b & 0b11000000) != 0b10000000)
+                {
+                    return false;
+                }
+                remainingOctets--;
+            }
+        }
+
+        // If we have completed all active sequences and there is at least 1
+        // extended character the bytes are considered to be UTF-8.
+        return remainingOctets == 0 && containsExtendedChar;
+    }
+
     private static bool IsValidEndBlock(ReadOnlySpan<char> block, int endIdx, int endBlockLength)
     {
         // Ensures the end signature block is valid and that it is at the end
@@ -168,9 +253,9 @@ internal class PowerShellScriptProvider : PowerShellProvider
     protected override string EndComment => "";
 
     public static PowerShellScriptProvider Create(byte[] data, Encoding? fileEncoding)
-        => new PowerShellScriptProvider(data, fileEncoding);
+        => new PowerShellScriptProvider(data, fileEncoding ?? GetScriptEncoding(data));
 
-    private PowerShellScriptProvider(byte[] data, Encoding? fileEncoding) : base(data, fileEncoding)
+    private PowerShellScriptProvider(byte[] data, Encoding fileEncoding) : base(data, fileEncoding)
     { }
 }
 
@@ -189,9 +274,9 @@ internal class PowerShellXmlProvider : PowerShellProvider
     protected override string EndComment => " -->";
 
     public static PowerShellXmlProvider Create(byte[] data, Encoding? fileEncoding)
-        => new PowerShellXmlProvider(data, fileEncoding);
+        => new PowerShellXmlProvider(data, fileEncoding ?? GetScriptEncoding(data));
 
-    private PowerShellXmlProvider(byte[] data, Encoding? fileEncoding) : base(data, fileEncoding)
+    private PowerShellXmlProvider(byte[] data, Encoding fileEncoding) : base(data, fileEncoding)
     { }
 }
 

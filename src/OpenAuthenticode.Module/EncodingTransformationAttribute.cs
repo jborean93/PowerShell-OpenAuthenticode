@@ -7,13 +7,21 @@ namespace OpenAuthenticode.Shared;
 
 public sealed class EncodingTransformAttribute : ArgumentTransformationAttribute
 {
-    public override object Transform(EngineIntrinsics engineIntrinsics, object inputData) => inputData switch
+    public override object Transform(EngineIntrinsics engineIntrinsics, object inputData)
     {
-        Encoding => inputData,
-        string s => GetEncodingFromString(s.ToUpperInvariant()),
-        int i => Encoding.GetEncoding(i),
-        _ => throw new ArgumentTransformationMetadataException($"Could not convert input '{inputData}' to a valid Encoding object."),
-    };
+        if (inputData is PSObject psObj)
+        {
+            inputData = psObj.BaseObject;
+        }
+
+        return inputData switch
+        {
+            Encoding => inputData,
+            string s => GetEncodingFromString(s.ToUpperInvariant()),
+            int i => Encoding.GetEncoding(i),
+            _ => throw new ArgumentTransformationMetadataException($"Could not convert input '{inputData}' to a valid Encoding object."),
+        };
+    }
 
     private static Encoding GetEncodingFromString(string encoding) => encoding switch
     {
