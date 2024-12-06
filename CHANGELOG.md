@@ -2,7 +2,9 @@
 
 ## v0.5.0 - TBD
 
+* Remove support for PowerShell 7.2 and 7.3 as they are end of life versions
 * Bump the Azure and OTP dependencies to the latest version available
+* Fix up PowerShell script encoding detection when no BOM is present
 
 ## v0.4.0 - 2023-08-25
 

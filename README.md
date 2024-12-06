@@ -15,7 +15,7 @@ See [OpenAuthenticode index](docs/en-US/OpenAuthenticode.md) for more details.
 
 These cmdlets have the following requirements
 
-* PowerShell v7.2 or newer
+* PowerShell v7.4 or newer
 
 ## Examples
 
