@@ -506,33 +506,48 @@ Describe "PowerShell Authenticode" {
         $actual.Certificate.NotAfter | Should -BeLessThan ([DateTime]::Now)
     }
 
-    It "Signs file with windows-1252 encoding - <Scenario>" -TestCases @(
+    It "Signs files without BOM - <Scenario>" -TestCases @(
         @{
-            Scenario = 'UTF-8 sequence present before 32 bytes'
-            Content = "#test $([char]0xC3)$([char]0xA9)`n"
+            Scenario = 'UTF-8 sequence across 2 octets'
+            Content = [byte[]]@(0x74, 0x65, 0x73, 0x74, 0xC3, 0xA9)
         }
         @{
-            Scenario = 'UTF-8 sequence present after 32 bytes'
-            Content = "$('a' * 31)$([char]0xE9)"
+            Scenario = 'UTF-8 sequence across 3 octets'
+            Content = [byte[]]@(0x74, 0x65, 0x73, 0x74, 0xE1, 0xB4, 0x81)
+        }
+        @{
+            Scenario = 'UTF-8 sequence across 4 octets'
+            Content = [byte[]]@(0x74, 0x65, 0x73, 0x74, 0xF0, 0x9D, 0x84, 0x9E)
+        }
+        @{
+            Scenario = 'UTF-8 sequence present just before 32 bytes'
+            Content = [System.Text.UTF8Encoding]::new($false).GetBytes("$('a' * 30)$([char]0xE9)")
+        }
+        @{
+            Scenario = 'UTF-8 sequence that gets cut at 32 bytes'
+            Content = [System.Text.UTF8Encoding]::new($false).GetBytes("$('a' * 31)$([char]0xE9)")
+        }
+        @{
+            Scenario = 'UTF-8 sequence after 32 bytes'
+            Content = [System.Text.UTF8Encoding]::new($false).GetBytes("$('a' * 32)$([char]0xE9)")
         }
         @{
             Scenario = 'Invalid UTF-8 sequence before 32 bytes'
-            Content = "#test $([char]0xC3)$([char]0xA9) $([char]0xE9)"
+            Content = [byte[]]@(0x20, 0xC3, 0xA9, 0x20, 0xE9, 0x74)
         }
         @{
             Scenario = 'Signed octet with invalid UTF-8 length'
-            Content = "$([char]0x20AC)test"
+            Content = [byte[]]@(0x80, 0x74, 0x65, 0x73, 0x74)
         }
         @{
             Scenario = 'No non-ASCII chars'
-            Content = "Write-Host cafe`n"
+            Content = [System.Text.Encoding]::ASCII.GetBytes("Write-Host cafe`n")
         }
     ) {
         param($Content)
 
         $scriptPath = New-Item -Path temp: -Name script.ps1 -Force
-        $encoding = [System.Text.Encoding]::GetEncoding([CultureInfo]::CurrentCulture.TextInfo.ANSICodePage)
-        [System.IO.File]::WriteAllText($scriptPath.FullName, $Content, $encoding)
+        [System.IO.File]::WriteAllBytes($scriptPath.FullName, $Content)
 
         $setParams = @{
             Path = $scriptPath
@@ -612,6 +627,31 @@ Describe "PowerShell Authenticode" {
         $scriptPath = New-Item -Path temp: -Name script.ps1 -Force
         $encoding = [System.Text.UTF8Encoding]::new($false)
         [System.IO.File]::WriteAllText($scriptPath.FullName, "Write-Host caf$([char]0x00E9)", $encoding)
+
+        $setParams = @{
+            Path = $scriptPath
+            Certificate = $cert
+        }
+        $res = Set-OpenAuthenticodeSignature @setParams
+        $res | Should -BeNullOrEmpty
+
+        $actual = Get-OpenAuthenticodeSignature -Path $scriptPath @trustParams
+        $actual | Should -BeOfType ([System.Security.Cryptography.Pkcs.SignedCms])
+        $actual.Path | Should -Be $scriptPath.FullName
+        $actual.HashAlgorithm | Should -Be SHA256
+        $actual.TimeStampInfo | Should -BeNullOrEmpty
+        $actual.Certificate.Thumbprint | Should -Be $cert.Thumbprint
+
+        If (Get-Command -Name Get-AuthenticodeSignature -ErrorAction Ignore) {
+            $actual = Get-AuthenticodeSignature -FilePath $scriptPath.FullName
+            $actual.Status | Should -Not -Be HashMismatch
+        }
+    }
+
+    It "Signs file with UTF-8 encoding longer than 32 bytes" {
+        $scriptPath = New-Item -Path temp: -Name script.ps1 -Force
+        $encoding = [System.Text.UTF8Encoding]::new($false)
+        [System.IO.File]::WriteAllText($scriptPath.FullName, "$('a' * 32)$([char]0x00E9)", $encoding)
 
         $setParams = @{
             Path = $scriptPath
