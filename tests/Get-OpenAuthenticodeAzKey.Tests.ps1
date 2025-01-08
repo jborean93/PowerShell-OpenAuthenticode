@@ -18,7 +18,8 @@ Function Test-Available {
                     $env:AZURE_CLIENT_SECRET -or
                     $env:AZURE_CLIENT_CERTIFICATE_PATH
                 )
-            )
+            ) -or
+            $env:AZURE_TOKEN_SOURCE
         ) -and
         $env:AZURE_KEYVAULT_NAME
     ) {
@@ -35,20 +36,25 @@ Describe "Get-OpenAuthenticodeAzKey" -Skip:(-not (Test-Available)) {
             Connect-AzAccount -TenantId $env:AZURE_TENANT_ID
         }
 
+        $TokenSourceSplat = @{}
+        if($env:AZURE_TOKEN_SOURCE) {
+            $TokenSourceSplat.TokenSource = $env:AZURE_TOKEN_SOURCE
+        }
+
         $rsaKey = if ($env:AZURE_KEYVAULT_RSA_CERTIFICATE) {
-            Get-OpenAuthenticodeAzKey -Vault $env:AZURE_KEYVAULT_NAME -Certificate $env:AZURE_KEYVAULT_RSA_CERTIFICATE
+            Get-OpenAuthenticodeAzKey -Vault $env:AZURE_KEYVAULT_NAME -Certificate $env:AZURE_KEYVAULT_RSA_CERTIFICATE @TokenSourceSplat
         }
         $ecdsaP256Key = if ($env:AZURE_KEYVAULT_ECDSA_P256_CERTIFICATE) {
-            Get-OpenAuthenticodeAzKey -Vault $env:AZURE_KEYVAULT_NAME -Certificate $env:AZURE_KEYVAULT_ECDSA_P256_CERTIFICATE
+            Get-OpenAuthenticodeAzKey -Vault $env:AZURE_KEYVAULT_NAME -Certificate $env:AZURE_KEYVAULT_ECDSA_P256_CERTIFICATE @TokenSourceSplat
         }
         $ecdsaP256KKey = if ($env:AZURE_KEYVAULT_ECDSA_P256K_CERTIFICATE) {
-            Get-OpenAuthenticodeAzKey -Vault $env:AZURE_KEYVAULT_NAME -Certificate $env:AZURE_KEYVAULT_ECDSA_P256K_CERTIFICATE
+            Get-OpenAuthenticodeAzKey -Vault $env:AZURE_KEYVAULT_NAME -Certificate $env:AZURE_KEYVAULT_ECDSA_P256K_CERTIFICATE @TokenSourceSplat
         }
         $ecdsaP384Key = if ($env:AZURE_KEYVAULT_ECDSA_P384_CERTIFICATE) {
-            Get-OpenAuthenticodeAzKey -Vault $env:AZURE_KEYVAULT_NAME -Certificate $env:AZURE_KEYVAULT_ECDSA_P384_CERTIFICATE
+            Get-OpenAuthenticodeAzKey -Vault $env:AZURE_KEYVAULT_NAME -Certificate $env:AZURE_KEYVAULT_ECDSA_P384_CERTIFICATE @TokenSourceSplat
         }
         $ecdsaP521Key = if ($env:AZURE_KEYVAULT_ECDSA_P521_CERTIFICATE) {
-            Get-OpenAuthenticodeAzKey -Vault $env:AZURE_KEYVAULT_NAME -Certificate $env:AZURE_KEYVAULT_ECDSA_P521_CERTIFICATE
+            Get-OpenAuthenticodeAzKey -Vault $env:AZURE_KEYVAULT_NAME -Certificate $env:AZURE_KEYVAULT_ECDSA_P521_CERTIFICATE @TokenSourceSplat
         }
         $ecdsaKeys = @{
             P256 = $ecdsaP256Key
@@ -63,6 +69,18 @@ Describe "Get-OpenAuthenticodeAzKey" -Skip:(-not (Test-Available)) {
         if ($ecdsaP256KKey) { $ecdsaP256KKey.Dispose() }
         if ($ecdsaP384Key) { $ecdsaP384Key.Dispose() }
         if ($ecdsaP521Key) { $ecdsaP521Key.Dispose() }
+    }
+
+    It "Builds credential for token source <Name>" -TestCases (
+            [OpenAuthenticode.Shared.AzureTokenSource].GetEnumValues() | ForEach-Object {
+                @{
+                    Name = $_.ToString()
+                    TokenSource = $_
+                }
+            }
+        ) {
+        param($Name, $TokenSource)
+        [OpenAuthenticode.Shared.TokenCredentialBuilder]::GetTokenCredential($TokenSource) | Should -Not -BeNullOrEmpty
     }
 
     It "Signs with RSA key and hash <Name>" -TestCases @(

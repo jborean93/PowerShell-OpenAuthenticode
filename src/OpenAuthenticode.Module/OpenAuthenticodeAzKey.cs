@@ -15,11 +15,14 @@ public sealed class GetOpenAuthenticodeAzKey : PSCmdlet
     [Alias("CertificateName")]
     public string Certificate { get; set; } = "";
 
+    [Parameter(Position = 2)]
+    public AzureTokenSource TokenSource { get; set; } = AzureTokenSource.Default;
+
     protected override void ProcessRecord()
     {
         try
         {
-            WriteObject(AzureKey.Create(Vault, Certificate));
+            WriteObject(AzureKey.Create(Vault, Certificate, TokenSource));
         }
         catch (Exception e)
         {
