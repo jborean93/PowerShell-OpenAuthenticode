@@ -34,7 +34,7 @@ By default authentication relies on the lookup behaviour of [DefaultAzureCredent
 It will lookup environment variables, device managed identities, az cli contexts, etc to authenticate with Azure.
 If the [Az.Accounts](https://www.powershellgallery.com/packages/Az.Accounts/) PowerShell module has been installed, the [Connect-AzAccount](https://learn.microsoft.com/en-us/powershell/module/az.accounts/connect-azaccount?view=azps-10.2.0) cmdlet can be used to authenticate the session before this cmdlet is called.
 It has not been set to allow for interactive authentication through the web browser.
-The `TokenSource` parameter can be used to specify different a different authentication method.
+The `-TokenSource` parameter can be used to specify different a different authentication method.
 
 See [about_AuthenticodeAzureKeys](./about_AuthenticodeAzureKeys.md) for more information on how a key can be used to sign files.
 
