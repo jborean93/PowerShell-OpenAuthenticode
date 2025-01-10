@@ -234,3 +234,11 @@ $signParams = @{
 }
 Set-OpenAuthenticodeSignature -FilePath $path @signParams
 ```
+
+Because DefaultAzureCredential authenticates in a [pre-defined order](https://learn.microsoft.com/en-us/dotnet/api/azure.identity.defaultazurecredential?view=azure-dotnet) `Get-OpenAuthenticodeAzKey` may not use the expected authentication method if others are available. For example if a managed identity is configured on the compute resource, it will take priority over Az CLI and Azure PowerShell.
+
+This behaviour can be overwritten with the `TokenSource` parameter of [Get-OpenAuthenticodeAzKey](./Get-OpenAuthenticodeAzKey.md).
+
+```powershell
+$key = Get-OpenAuthenticodeAzKey -Vault $vaultName -Certificate $vaultCert -TokenSource AzurePowerShell
+```
