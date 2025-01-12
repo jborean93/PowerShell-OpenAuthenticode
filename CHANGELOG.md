@@ -1,5 +1,9 @@
 # Changelog for OpenAuthenticode
 
+## v0.6.0 - TBD
+
+* Added the `-TokenSource` parameter for `Get-OpenAuthenticodeAzKey` to specify the authentication method used.
+
 ## v0.5.0 - 2024-12-07
 
 * Remove support for PowerShell 7.2 and 7.3 as they are end of life versions

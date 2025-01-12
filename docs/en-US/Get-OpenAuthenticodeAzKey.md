@@ -13,7 +13,7 @@ Get an Azure KeyVault certificate and key for use with Authenticode signing.
 ## SYNTAX
 
 ```
-Get-OpenAuthenticodeAzKey [-Vault] <String> [-Certificate] <String> [<CommonParameters>]
+Get-OpenAuthenticodeAzKey [-Vault] <String> [-Certificate] <String> [-TokenSource] <AzureTokenSource> [<CommonParameters>]
 ```
 
 ## DESCRIPTION
@@ -30,10 +30,11 @@ This ensures the key does not leave Azure itself but rather Azure is used to sig
 Currently only certificates signed with an RSA can be used, ECDSA support is planned for the future.
 The certificate must also have the Key Usage of `Digital Signature (80)` and Enhanced Key Usage `Code Signing (1.3.6.1.5.5.7.3.3)` for it to be used with Authenticode.
 
-Currently authentication relies on the lookup behaviour of [DefaultAzureCredential](https://learn.microsoft.com/en-us/dotnet/api/overview/azure/identity-readme?view=azure-dotnet).
+By default authentication relies on the lookup behaviour of [DefaultAzureCredential](https://learn.microsoft.com/en-us/dotnet/api/overview/azure/identity-readme?view=azure-dotnet).
 It will lookup environment variables, device managed identities, az cli contexts, etc to authenticate with Azure.
 If the [Az.Accounts](https://www.powershellgallery.com/packages/Az.Accounts/) PowerShell module has been installed, the [Connect-AzAccount](https://learn.microsoft.com/en-us/powershell/module/az.accounts/connect-azaccount?view=azps-10.2.0) cmdlet can be used to authenticate the session before this cmdlet is called.
 It has not been set to allow for interactive authentication through the web browser.
+The `-TokenSource` parameter can be used to specify different a different authentication method.
 
 See [about_AuthenticodeAzureKeys](./about_AuthenticodeAzureKeys.md) for more information on how a key can be used to sign files.
 
@@ -47,6 +48,15 @@ PS C:\> Set-AuthenticodeSignature test.ps1 -Key $key
 
 Gets the Azure KeyVault key `Authenticode` in the vault `code-signing-test` and uses it to sign the file `test.ps1`.
 This does not include any pre-requisite steps for setting up the authentication details used by `Get-OpenAuthenticodeAzKey`.
+
+### Example 2: Get key for use with signing using the authentication token from Azure PowerShell
+```powershell
+PS C:\> Connect-AzAccount
+PS C:\> $key = Get-OpenAuthenticodeAzKey -Vault code-signing-test -Certificate Authenticode -AuthenticationMethod AzurePowerShell
+PS C:\> Set-AuthenticodeSignature test.ps1 -Key $key
+```
+
+Authenticates with Azure PowerShell and then gets the Azure KeyVault key `Authenticode` in the vault `code-signing-test` and uses it to sign the file `test.ps1`.
 
 ## PARAMETERS
 
@@ -76,6 +86,28 @@ Aliases: VaultName
 Required: True
 Position: 0
 Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -TokenSource
+The authentication method used.
+
+Supported sources include:
+* Default - [DefaultAzureCredential](https://learn.microsoft.com/en-us/dotnet/api/azure.identity.defaultazurecredential?view=azure-dotnet)
+* Environment - [EnvironmentCredential](https://learn.microsoft.com/en-us/dotnet/api/azure.identity.environmentcredential?view=azure-dotnet)
+* AzurePowerShell - [AzurePowerShellCredential](https://learn.microsoft.com/en-us/dotnet/api/azure.identity.azurepowershellcredential?view=azure-dotnet)
+* AzureCli - [AzureCliCredential](https://learn.microsoft.com/en-us/dotnet/api/azure.identity.azureclicredential?view=azure-dotnet)
+* ManagedIdentity - [ManagedIdentityCredential](https://learn.microsoft.com/en-us/dotnet/api/azure.identity.managedidentitycredential?view=azure-dotnet)
+
+```yaml
+Type: AzureTokenSource
+Parameter Sets: (All)
+Aliases: None
+
+Required: False
+Position: Named
+Default value: Default
 Accept pipeline input: False
 Accept wildcard characters: False
 ```

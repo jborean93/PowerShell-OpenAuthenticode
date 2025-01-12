@@ -1,7 +1,7 @@
 using System;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
-using Azure.Identity;
+using Azure.Core;
 using Azure.Security.KeyVault.Certificates;
 using Azure.Security.KeyVault.Keys.Cryptography;
 using AzureSignatureAlgorithm = Azure.Security.KeyVault.Keys.Cryptography.SignatureAlgorithm;
@@ -76,11 +76,11 @@ public sealed class AzureKey : KeyProvider, IDisposable
         throw new NotImplementedException($"Azure Key vault does not support the key algorithm {keyAlgorithm}");
     }
 
-    internal static AzureKey Create(string vaultName, string keyName)
+    internal static AzureKey Create(string vaultName, string keyName, AzureTokenSource tokenSource)
     {
         string keyVaultUrl = $"https://{vaultName}.vault.azure.net/";
 
-        DefaultAzureCredential cred = new(includeInteractiveCredentials: false);
+        TokenCredential cred = TokenCredentialBuilder.GetTokenCredential(tokenSource);
 
         CertificateClient certClient = new(new Uri(keyVaultUrl), cred);
         KeyVaultCertificateWithPolicy certInfo = certClient.GetCertificate(keyName);
