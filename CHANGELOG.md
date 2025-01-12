@@ -1,6 +1,6 @@
 # Changelog for OpenAuthenticode
 
-## v0.6.0 - 2025-01-10
+## v0.6.0 - TBD
 
 * Added the `-TokenSource` parameter for `Get-OpenAuthenticodeAzKey` to specify the authentication method used.
 
