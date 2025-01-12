@@ -15,7 +15,7 @@ public sealed class GetOpenAuthenticodeAzKey : PSCmdlet
     [Alias("CertificateName")]
     public string Certificate { get; set; } = "";
 
-    [Parameter(Position = 2)]
+    [Parameter()]
     public AzureTokenSource TokenSource { get; set; } = AzureTokenSource.Default;
 
     protected override void ProcessRecord()
