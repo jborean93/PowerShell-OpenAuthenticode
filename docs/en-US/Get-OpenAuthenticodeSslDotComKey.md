@@ -16,21 +16,21 @@ Gets a SSL.com certificate key for use with Authenticode signing.
 ```
 Get-OpenAuthenticodeSslDotComKey [-ApiEndpoint <String>] [-Certificate <SslDotComCertificate>]
  [-TOPTSecret <String>] -ClientId <String> -ClientSecret <SecureString> [-AuthorizationCode <SecureString>]
- [<CommonParameters>]
+ [-ProgressAction <ActionPreference>] [<CommonParameters>]
 ```
 
 ### Credential
 ```
 Get-OpenAuthenticodeSslDotComKey [-ApiEndpoint <String>] [-Certificate <SslDotComCertificate>]
  [-TOPTSecret <String>] -ClientId <String> -ClientSecret <SecureString> -Credential <PSCredential>
- [<CommonParameters>]
+ [-ProgressAction <ActionPreference>] [<CommonParameters>]
 ```
 
 ### UserName
 ```
 Get-OpenAuthenticodeSslDotComKey [-ApiEndpoint <String>] [-Certificate <SslDotComCertificate>]
  [-TOPTSecret <String>] -ClientId <String> -ClientSecret <SecureString> -UserName <String>
- -Password <SecureString> [<CommonParameters>]
+ -Password <SecureString> [-ProgressAction <ActionPreference>] [<CommonParameters>]
 ```
 
 ## DESCRIPTION
@@ -283,6 +283,21 @@ Accept pipeline input: False
 Accept wildcard characters: False
 ```
 
+### -ProgressAction
+New common parameter introduced in PowerShell 7.4.
+
+```yaml
+Type: ActionPreference
+Parameter Sets: (All)
+Aliases: proga
+
+Required: False
+Position: Named
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
 ### -TOPTSecret
 The Time-based One Time Password (TOTP) secret that can be used to generate OTP codes during signing.
 This secret is generated in the eSigner console for the certificate when setting up the second factor authentication.
@@ -326,7 +341,7 @@ None
 
 ## OUTPUTS
 
-### OpenAuthenticode.Shared.SslDotComKey
+### OpenAuthenticode.Module.SslDotComKey
 The SSL.com key object that can be used with the `-Key` parameter in `Set-OpenAuthenticodeSignature`.
 
 ## NOTES

@@ -15,25 +15,29 @@ Gets information about the Authenticode signature for a file.
 ### Path (Default)
 ```
 Get-OpenAuthenticodeSignature [-Path] <String[]> [-Encoding <Encoding>] [-SkipCertificateCheck]
- [-TrustStore <X509Certificate2Collection>] [-Provider <AuthenticodeProvider>] [<CommonParameters>]
+ [-TrustStore <X509Certificate2Collection>] [-Provider <AuthenticodeProvider>]
+ [-ProgressAction <ActionPreference>] [<CommonParameters>]
 ```
 
 ### LiteralPath
 ```
 Get-OpenAuthenticodeSignature -LiteralPath <String[]> [-Encoding <Encoding>] [-SkipCertificateCheck]
- [-TrustStore <X509Certificate2Collection>] [-Provider <AuthenticodeProvider>] [<CommonParameters>]
+ [-TrustStore <X509Certificate2Collection>] [-Provider <AuthenticodeProvider>]
+ [-ProgressAction <ActionPreference>] [<CommonParameters>]
 ```
 
 ### Content
 ```
 Get-OpenAuthenticodeSignature -Content <String> [-SkipCertificateCheck]
- [-TrustStore <X509Certificate2Collection>] [-Provider <AuthenticodeProvider>] [<CommonParameters>]
+ [-TrustStore <X509Certificate2Collection>] [-Provider <AuthenticodeProvider>]
+ [-ProgressAction <ActionPreference>] [<CommonParameters>]
 ```
 
 ### RawContent
 ```
 Get-OpenAuthenticodeSignature -RawContent <Byte[]> [-Encoding <Encoding>] [-SkipCertificateCheck]
- [-TrustStore <X509Certificate2Collection>] [-Provider <AuthenticodeProvider>] [<CommonParameters>]
+ [-TrustStore <X509Certificate2Collection>] [-Provider <AuthenticodeProvider>]
+ [-ProgressAction <ActionPreference>] [<CommonParameters>]
 ```
 
 ## DESCRIPTION
@@ -185,6 +189,21 @@ Position: 0
 Default value: None
 Accept pipeline input: True (ByPropertyName, ByValue)
 Accept wildcard characters: True
+```
+
+### -ProgressAction
+New common parameter introduced in PowerShell 7.4.
+
+```yaml
+Type: ActionPreference
+Parameter Sets: (All)
+Aliases: proga
+
+Required: False
+Position: Named
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
 ```
 
 ### -Provider

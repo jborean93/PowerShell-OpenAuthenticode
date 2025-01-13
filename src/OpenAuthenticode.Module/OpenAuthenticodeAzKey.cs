@@ -1,7 +1,7 @@
 using System;
 using System.Management.Automation;
 
-namespace OpenAuthenticode.Shared;
+namespace OpenAuthenticode.Module;
 
 [Cmdlet(VerbsCommon.Get, "OpenAuthenticodeAzKey")]
 [OutputType(typeof(AzureKey))]
@@ -15,7 +15,7 @@ public sealed class GetOpenAuthenticodeAzKey : PSCmdlet
     [Alias("CertificateName")]
     public string Certificate { get; set; } = "";
 
-    [Parameter()]
+    [Parameter]
     public AzureTokenSource TokenSource { get; set; } = AzureTokenSource.Default;
 
     protected override void ProcessRecord()

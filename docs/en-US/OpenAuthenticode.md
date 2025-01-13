@@ -20,6 +20,9 @@ Removes all Authenticode signatures from the path specified.
 ### [Get-OpenAuthenticodeAzKey](Get-OpenAuthenticodeAzKey.md)
 Get an Azure KeyVault certificate and key for use with Authenticode signing.
 
+### [Get-OpenAuthenticodeAzTrustedSigner](Get-OpenAuthenticodeAzTrustedSigner.md)
+Gets an Azure Trusted Signer key for use with Authenticode signing.
+
 ### [Get-OpenAuthenticodeSignature](Get-OpenAuthenticodeSignature.md)
 Gets information about the Authenticode signature for a file.
 

@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <PackageReference Include="System.Management.Automation" Version="7.4.0" PrivateAssets="all" />
+    <PackageReference Include="Azure.CodeSigning.Sdk" Version="0.1.127" />
     <PackageReference Include="Azure.Identity" Version="1.13.1" />
     <PackageReference Include="Azure.Security.KeyVault.Certificates" Version="4.7.0" />
     <PackageReference Include="Azure.Security.KeyVault.Keys" Version="4.7.0" />

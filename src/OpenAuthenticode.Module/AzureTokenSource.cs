@@ -1,29 +1,27 @@
+using System;
 using Azure.Core;
 using Azure.Identity;
 
-namespace OpenAuthenticode.Shared {
-    public enum AzureTokenSource {
-        Default,
-        Environment,
-        AzurePowerShell,
-        AzureCli,
-        ManagedIdentity,
-    }
+namespace OpenAuthenticode.Module;
 
-    public class TokenCredentialBuilder {
-        public static TokenCredential GetTokenCredential(AzureTokenSource tokenSource) {
-            switch(tokenSource) {
-                case AzureTokenSource.Environment:
-                    return new EnvironmentCredential();
-                case AzureTokenSource.AzurePowerShell:
-                    return new AzurePowerShellCredential();
-                case AzureTokenSource.AzureCli:
-                    return new AzureCliCredential();
-                case AzureTokenSource.ManagedIdentity:
-                    return new ManagedIdentityCredential();
-                default:
-                    return new DefaultAzureCredential(includeInteractiveCredentials: false);
-            }
-        }
-    }
+public enum AzureTokenSource
+{
+    Default,
+    Environment,
+    AzurePowerShell,
+    AzureCli,
+    ManagedIdentity,
+}
+
+public static class TokenCredentialBuilder
+{
+    public static TokenCredential GetTokenCredential(AzureTokenSource tokenSource) => tokenSource switch
+    {
+        AzureTokenSource.Default => new DefaultAzureCredential(includeInteractiveCredentials: false),
+        AzureTokenSource.Environment => new EnvironmentCredential(),
+        AzureTokenSource.AzurePowerShell => new AzurePowerShellCredential(),
+        AzureTokenSource.AzureCli => new AzureCliCredential(),
+        AzureTokenSource.ManagedIdentity => new ManagedIdentityCredential(),
+        _ => throw new NotImplementedException($"Unknown AzureTokenSource {tokenSource} specified."),
+    };
 }

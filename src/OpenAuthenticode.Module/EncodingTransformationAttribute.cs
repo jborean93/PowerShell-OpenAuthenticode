@@ -3,9 +3,9 @@ using System.Management.Automation;
 using System.Text;
 using System.Globalization;
 
-namespace OpenAuthenticode.Shared;
+namespace OpenAuthenticode.Module;
 
-public sealed class EncodingTransformAttribute : ArgumentTransformationAttribute
+public sealed class EncodingTransformationAttribute : ArgumentTransformationAttribute
 {
     public override object Transform(EngineIntrinsics engineIntrinsics, object inputData)
     {

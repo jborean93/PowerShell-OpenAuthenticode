@@ -3,6 +3,8 @@
 ## v0.6.0 - TBD
 
 * Added the `-TokenSource` parameter for `Get-OpenAuthenticodeAzKey` to specify the authentication method used.
+* Added the following cmdlets
+  * [Get-OpenAuthenticodeAzTrustedSigner](./docs/en-US/Get-OpenAuthenticodeAzTrustedSigner.md) - uses Azure Trusted Signer to sign the provided files
 
 ## v0.5.0 - 2024-12-07
 

@@ -11,6 +11,9 @@ More format are planned for the future.
 
 See [OpenAuthenticode index](docs/en-US/OpenAuthenticode.md) for more details.
 
+> [!NOTE]
+> While this can do a standard certificate CA check, it does not currently implement any revocation checks so may not be viable for using as your own trust source.
+
 ## Requirements
 
 These cmdlets have the following requirements

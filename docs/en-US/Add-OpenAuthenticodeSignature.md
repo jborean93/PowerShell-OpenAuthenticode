@@ -17,7 +17,8 @@ Adds an authenticode signature to a file.
 Add-OpenAuthenticodeSignature [-Path] <String[]> -Certificate <X509Certificate2> [-Encoding <Encoding>]
  [-HashAlgorithm <HashAlgorithmName>] [-IncludeOption <X509IncludeOption>] [-PassThru]
  [-TimeStampHashAlgorithm <HashAlgorithmName>] [-TimeStampServer <String>] [-Silent]
- [-Provider <AuthenticodeProvider>] [-WhatIf] [-Confirm] [<CommonParameters>]
+ [-Provider <AuthenticodeProvider>] [-ProgressAction <ActionPreference>] [-WhatIf] [-Confirm]
+ [<CommonParameters>]
 ```
 
 ### PathKey
@@ -25,7 +26,8 @@ Add-OpenAuthenticodeSignature [-Path] <String[]> -Certificate <X509Certificate2>
 Add-OpenAuthenticodeSignature [-Path] <String[]> -Key <KeyProvider> [-Encoding <Encoding>]
  [-HashAlgorithm <HashAlgorithmName>] [-IncludeOption <X509IncludeOption>] [-PassThru]
  [-TimeStampHashAlgorithm <HashAlgorithmName>] [-TimeStampServer <String>] [-Silent]
- [-Provider <AuthenticodeProvider>] [-WhatIf] [-Confirm] [<CommonParameters>]
+ [-Provider <AuthenticodeProvider>] [-ProgressAction <ActionPreference>] [-WhatIf] [-Confirm]
+ [<CommonParameters>]
 ```
 
 ### LiteralPathCertificate
@@ -33,7 +35,8 @@ Add-OpenAuthenticodeSignature [-Path] <String[]> -Key <KeyProvider> [-Encoding <
 Add-OpenAuthenticodeSignature -LiteralPath <String[]> -Certificate <X509Certificate2> [-Encoding <Encoding>]
  [-HashAlgorithm <HashAlgorithmName>] [-IncludeOption <X509IncludeOption>] [-PassThru]
  [-TimeStampHashAlgorithm <HashAlgorithmName>] [-TimeStampServer <String>] [-Silent]
- [-Provider <AuthenticodeProvider>] [-WhatIf] [-Confirm] [<CommonParameters>]
+ [-Provider <AuthenticodeProvider>] [-ProgressAction <ActionPreference>] [-WhatIf] [-Confirm]
+ [<CommonParameters>]
 ```
 
 ### LiteralPathKey
@@ -41,7 +44,8 @@ Add-OpenAuthenticodeSignature -LiteralPath <String[]> -Certificate <X509Certific
 Add-OpenAuthenticodeSignature -LiteralPath <String[]> -Key <KeyProvider> [-Encoding <Encoding>]
  [-HashAlgorithm <HashAlgorithmName>] [-IncludeOption <X509IncludeOption>] [-PassThru]
  [-TimeStampHashAlgorithm <HashAlgorithmName>] [-TimeStampServer <String>] [-Silent]
- [-Provider <AuthenticodeProvider>] [-WhatIf] [-Confirm] [<CommonParameters>]
+ [-Provider <AuthenticodeProvider>] [-ProgressAction <ActionPreference>] [-WhatIf] [-Confirm]
+ [<CommonParameters>]
 ```
 
 ## DESCRIPTION
@@ -255,6 +259,21 @@ Position: 0
 Default value: None
 Accept pipeline input: True (ByPropertyName, ByValue)
 Accept wildcard characters: True
+```
+
+### -ProgressAction
+New common parameter introduced in PowerShell 7.4.
+
+```yaml
+Type: ActionPreference
+Parameter Sets: (All)
+Aliases: proga
+
+Required: False
+Position: Named
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
 ```
 
 ### -Provider

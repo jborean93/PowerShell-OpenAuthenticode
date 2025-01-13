@@ -13,7 +13,8 @@ Get an Azure KeyVault certificate and key for use with Authenticode signing.
 ## SYNTAX
 
 ```
-Get-OpenAuthenticodeAzKey [-Vault] <String> [-Certificate] <String> [-TokenSource] <AzureTokenSource> [<CommonParameters>]
+Get-OpenAuthenticodeAzKey [-Vault] <String> [-Certificate] <String> [-TokenSource <AzureTokenSource>]
+ [-ProgressAction <ActionPreference>] [<CommonParameters>]
 ```
 
 ## DESCRIPTION
@@ -27,7 +28,6 @@ The authenticated Azure principal must have the following Azure access policy pe
 The signing workflow does not require the key to be present on the local machine as it calls the Azure `Sign` API with the Authenticode digest.
 This ensures the key does not leave Azure itself but rather Azure is used to sign the data remotely.
 
-Currently only certificates signed with an RSA can be used, ECDSA support is planned for the future.
 The certificate must also have the Key Usage of `Digital Signature (80)` and Enhanced Key Usage `Code Signing (1.3.6.1.5.5.7.3.3)` for it to be used with Authenticode.
 
 By default authentication relies on the lookup behaviour of [DefaultAzureCredential](https://learn.microsoft.com/en-us/dotnet/api/overview/azure/identity-readme?view=azure-dotnet).
@@ -75,16 +75,16 @@ Accept pipeline input: False
 Accept wildcard characters: False
 ```
 
-### -Vault
-The name of the Azure KeyVault to find the certificate in.
+### -ProgressAction
+New common parameter introduced in PowerShell 7.4.
 
 ```yaml
-Type: String
+Type: ActionPreference
 Parameter Sets: (All)
-Aliases: VaultName
+Aliases: proga
 
-Required: True
-Position: 0
+Required: False
+Position: Named
 Default value: None
 Accept pipeline input: False
 Accept wildcard characters: False
@@ -103,11 +103,26 @@ Supported sources include:
 ```yaml
 Type: AzureTokenSource
 Parameter Sets: (All)
-Aliases: None
+Aliases:
 
 Required: False
 Position: Named
 Default value: Default
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -Vault
+The name of the Azure KeyVault to find the certificate in.
+
+```yaml
+Type: String
+Parameter Sets: (All)
+Aliases: VaultName
+
+Required: True
+Position: 0
+Default value: None
 Accept pipeline input: False
 Accept wildcard characters: False
 ```
@@ -122,7 +137,7 @@ None
 
 ## OUTPUTS
 
-### OpenAuthenticode.Shared.AzureKey
+### OpenAuthenticode.Module.AzureKey
 The AzureKey object that can be used with the `-Key` parameter in `Set-OpenAuthenticodeSignature`.
 
 ## NOTES

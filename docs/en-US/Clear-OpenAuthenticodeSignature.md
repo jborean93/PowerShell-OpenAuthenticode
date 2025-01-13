@@ -15,13 +15,14 @@ Removes all Authenticode signatures from the path specified.
 ### Path (Default)
 ```
 Clear-OpenAuthenticodeSignature [-Path] <String[]> [-Encoding <Encoding>] [-Provider <AuthenticodeProvider>]
- [-WhatIf] [-Confirm] [<CommonParameters>]
+ [-ProgressAction <ActionPreference>] [-WhatIf] [-Confirm] [<CommonParameters>]
 ```
 
 ### LiteralPath
 ```
 Clear-OpenAuthenticodeSignature -LiteralPath <String[]> [-Encoding <Encoding>]
- [-Provider <AuthenticodeProvider>] [-WhatIf] [-Confirm] [<CommonParameters>]
+ [-Provider <AuthenticodeProvider>] [-ProgressAction <ActionPreference>] [-WhatIf] [-Confirm]
+ [<CommonParameters>]
 ```
 
 ## DESCRIPTION
@@ -114,6 +115,21 @@ Position: 0
 Default value: None
 Accept pipeline input: True (ByPropertyName, ByValue)
 Accept wildcard characters: True
+```
+
+### -ProgressAction
+New common parameter introduced in PowerShell 7.4.
+
+```yaml
+Type: ActionPreference
+Parameter Sets: (All)
+Aliases: proga
+
+Required: False
+Position: Named
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
 ```
 
 ### -Provider
