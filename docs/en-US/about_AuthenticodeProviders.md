@@ -26,4 +26,3 @@ Each provider provides a way to:
 * Get a hashed digest in the form of the Authenticode `SpcIndirectData` structure
 * Add custom attributes to be signed to the [CmsSigner PKCS 7 block](https://learn.microsoft.com/en-us/dotnet/api/system.security.cryptography.pkcs.cmssigner?view=dotnet-plat-ext-7.0)
 * Save (add/remove/set) the signature to the file requested
-

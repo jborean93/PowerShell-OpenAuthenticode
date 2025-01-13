@@ -9,7 +9,7 @@ using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
 using OtpNet;
 
-namespace OpenAuthenticode.Shared;
+namespace OpenAuthenticode.Module;
 
 public sealed class SslDotComKey : KeyProvider
 {

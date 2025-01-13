@@ -72,6 +72,7 @@
         'Add-OpenAuthenticodeSignature'
         'Clear-OpenAuthenticodeSignature'
         'Get-OpenAuthenticodeAzKey'
+        'Get-OpenAuthenticodeAzTrustedSigner'
         'Get-OpenAuthenticodeSignature'
         'Get-OpenAuthenticodeSslDotComKey'
         'Set-OpenAuthenticodeSignature'

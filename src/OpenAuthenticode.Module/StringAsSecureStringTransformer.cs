@@ -1,7 +1,7 @@
 using System.Management.Automation;
 using System.Security;
 
-namespace OpenAuthenticode.Shared;
+namespace OpenAuthenticode.Module;
 
 internal sealed class StringAsSecureStringTransformer : ArgumentTransformationAttribute
 {

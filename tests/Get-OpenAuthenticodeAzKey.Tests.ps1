@@ -71,18 +71,6 @@ Describe "Get-OpenAuthenticodeAzKey" -Skip:(-not (Test-Available)) {
         if ($ecdsaP521Key) { $ecdsaP521Key.Dispose() }
     }
 
-    It "Builds credential for token source <Name>" -TestCases (
-            [OpenAuthenticode.Shared.AzureTokenSource].GetEnumValues() | ForEach-Object {
-                @{
-                    Name = $_.ToString()
-                    TokenSource = $_
-                }
-            }
-        ) {
-        param($Name, $TokenSource)
-        [OpenAuthenticode.Shared.TokenCredentialBuilder]::GetTokenCredential($TokenSource) | Should -Not -BeNullOrEmpty
-    }
-
     It "Signs with RSA key and hash <Name>" -TestCases @(
         @{ Name = "Default" }
         @{ Name = "SHA1" }

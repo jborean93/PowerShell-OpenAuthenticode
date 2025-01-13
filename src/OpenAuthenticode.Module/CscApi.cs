@@ -11,7 +11,7 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace OpenAuthenticode.Shared;
+namespace OpenAuthenticode.Module;
 
 // https://cloudsignatureconsortium.org/wp-content/uploads/2020/05/CSC_API_V0_0.1.7.9.pdf
 

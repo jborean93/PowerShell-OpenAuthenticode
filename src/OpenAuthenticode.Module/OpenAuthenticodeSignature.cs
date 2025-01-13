@@ -12,7 +12,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Microsoft.PowerShell.Commands;
 
-namespace OpenAuthenticode.Shared;
+namespace OpenAuthenticode.Module;
 
 public class OpenAuthenticodeSignatureBase : AsyncPSCmdlet
 {
@@ -104,7 +104,7 @@ public sealed class ClearOpenAuthenticodeSignature : OpenAuthenticodeSignatureBa
     }
 
     [Parameter()]
-    [EncodingTransformAttribute]
+    [EncodingTransformation]
     [ArgumentCompletions("Utf8", "ASCII", "ANSI", "OEM", "Unicode", "Utf8Bom", "Utf8NoBom")]
     public Encoding? Encoding { get; set; }
 
@@ -216,7 +216,7 @@ public sealed class GetOpenAuthenticodeSignature : OpenAuthenticodeSignatureBase
     [Parameter(ParameterSetName = "Path")]
     [Parameter(ParameterSetName = "LiteralPath")]
     [Parameter(ParameterSetName = "RawContent")]
-    [EncodingTransformAttribute]
+    [EncodingTransformation]
     [ArgumentCompletions("Utf8", "ASCII", "ANSI", "OEM", "Unicode", "Utf8Bom", "Utf8NoBom")]
     public Encoding? Encoding { get; set; }
 
@@ -443,7 +443,7 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
     public KeyProvider? Key { get; set; }
 
     [Parameter()]
-    [EncodingTransformAttribute]
+    [EncodingTransformation]
     [ArgumentCompletions("Utf8", "ASCII", "ANSI", "OEM", "Unicode", "Utf8Bom", "Utf8NoBom")]
     public Encoding? Encoding { get; set; }
 
