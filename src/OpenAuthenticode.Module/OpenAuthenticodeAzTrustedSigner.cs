@@ -77,10 +77,29 @@ public sealed class GetOpenAuthenticodeAzTrustedSigner : AsyncPSCmdlet
         }
 
         WriteVerbose("Importing certificate chain");
-        X509Certificate2Collection chain = new();
+        X509Certificate2Collection chain = [];
         chain.Import(rawChain);
         X509Certificate2 cert = chain[0];
         WriteVerbose($"Creating AzureTrustedSigner object with cert '{cert.SubjectName.Name}' - {cert.Thumbprint}");
+
+        try
+        {
+            KeyType keyType = cert.GetOpenAuthenticodeKeyType();
+            if (keyType != KeyType.RSA)
+            {
+                throw new NotImplementedException($"Azure Trusting Signing implementation does not support {keyType} keys");
+            }
+        }
+        catch (Exception e)
+        {
+            ErrorRecord err = new(
+                e,
+                "AzTrustedSigningUnknownKeyType",
+                ErrorCategory.NotSpecified,
+                null);
+            WriteError(err);
+            return;
+        }
 
         AzureTrustedSigner signerKey = new(
             client,

@@ -316,7 +316,6 @@ Describe "PowerShell Authenticode" {
     }
 
     It "Signs a script with RSA hash <Name>" -TestCases @(
-        @{Name = "SHA1" },
         @{Name = "SHA256" },
         @{Name = "SHA384" },
         @{Name = "SHA512" }

@@ -175,8 +175,17 @@ public abstract class AsyncPSCmdlet : PSCmdlet, IDisposable
         }
     }
 
+    protected virtual void Dispose(bool isDisposing)
+    {
+        if (isDisposing)
+        {
+            _cancelSource?.Dispose();
+        }
+    }
+
     public void Dispose()
     {
-        _cancelSource?.Dispose();
+        Dispose(true);
+        GC.SuppressFinalize(this);
     }
 }
