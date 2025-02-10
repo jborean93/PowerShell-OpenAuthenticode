@@ -1,21 +1,18 @@
-using System;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Threading.Tasks;
 using Azure.CodeSigning;
 using Azure.CodeSigning.Models;
 using AzureSignatureAlgorithm = Azure.CodeSigning.Models.SignatureAlgorithm;
 
 namespace OpenAuthenticode.Module;
 
-public sealed class AzureTrustedSigner : KeyProvider, IDisposable
+public sealed class AzureTrustedSigner : KeyProvider
 {
     private readonly CertificateProfileClient _client;
-
-    public override X509Certificate2 Certificate { get; }
-
-    internal override AsymmetricAlgorithm Key { get; }
-
-    internal override HashAlgorithmName? DefaultHashAlgorithm { get; }
+    private readonly string _accountName;
+    private readonly string _profileName;
+    private readonly string? _correlationId;
 
     public AzureTrustedSigner(
         CertificateProfileClient client,
@@ -23,35 +20,11 @@ public sealed class AzureTrustedSigner : KeyProvider, IDisposable
         string accountName,
         string profileName,
         string? correlationId)
-    {
-        _client = client;
-        Certificate = cert;
-
-        using RSA rsaPubKey = cert.GetRSAPublicKey()
-            ?? throw new NotImplementedException("The Azure Trusted Signer key implementation currently only supports RSA keys.");
-        Key = new AzureTrustedSignerRSAKey(_client, accountName, profileName, correlationId);
-    }
-
-    public void Dispose()
-    {
-        Key?.Dispose();
-        GC.SuppressFinalize(this);
-    }
-    ~AzureTrustedSigner() => Dispose();
-}
-
-internal sealed class AzureTrustedSignerRSAKey : AzureRSAKey
-{
-    private readonly CertificateProfileClient _client;
-    private readonly string _accountName;
-    private readonly string _profileName;
-    private readonly string? _correlationId;
-
-    public AzureTrustedSignerRSAKey(
-        CertificateProfileClient client,
-        string accountName,
-        string profileName,
-        string? correlationId = null)
+            : base(
+                cert,
+                KeyType.RSA,
+                supportsParallelSigning: true,
+                allowedAlgorithms: [HashAlgorithmName.SHA256, HashAlgorithmName.SHA384, HashAlgorithmName.SHA512])
     {
         _client = client;
         _accountName = accountName;
@@ -59,18 +32,28 @@ internal sealed class AzureTrustedSignerRSAKey : AzureRSAKey
         _correlationId = correlationId;
     }
 
-    public override byte[] SignHashCore(byte[] hash, string azureAlgorithm)
+    internal override async Task<byte[]> SignHashAsync(
+        AsyncPSCmdlet cmdlet,
+        string path,
+        byte[] hash,
+        HashAlgorithmName hashAlgorithm)
     {
-        AzureSignatureAlgorithm sigAlgo = new(azureAlgorithm);
+        string algorithmName = AzureKeyAlgorithms.GetAzureRsaAlgorithm(hashAlgorithm);
+        SignRequest request = new(new AzureSignatureAlgorithm(algorithmName), hash);
 
-        SignRequest request = new(sigAlgo, hash);
-        CertificateProfileSignOperation operation = _client.StartSign(
+        cmdlet.WriteVerbose($"Starting Azure Trusted Signing operation for '{path}'.");
+        CertificateProfileSignOperation operation = await _client.StartSignAsync(
             codeSigningAccountName: _accountName,
             certificateProfileName: _profileName,
             body: request,
-            xCorrelationId: _correlationId);
-        SignStatus response = operation.WaitForCompletionAsync().GetAwaiter().GetResult();
+            xCorrelationId: _correlationId,
+            cancellationToken: cmdlet.CancelToken).ConfigureAwait(false);
 
+        cmdlet.WriteVerbose($"Waiting for Azure Trusted Signing operation for '{path}' to complete, OperationId '{operation.Id}'.");
+        SignStatus response = await operation.WaitForCompletionAsync(
+            cancellationToken: cmdlet.CancelToken).ConfigureAwait(false);
+
+        cmdlet.WriteVerbose($"Azure Trusted Signing operation '{operation.Id}' completed with status '{response.Status}'.");
         return response.Signature;
     }
 }

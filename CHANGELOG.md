@@ -3,6 +3,8 @@
 ## v0.6.0 - TBD
 
 * Added the `-TokenSource` parameter for `Get-OpenAuthenticodeAzKey` to specify the authentication method used.
+* Move all signing operations to the `EndProcessing` of the cmdlet to batch up multiple requests if present.
+* Removed `Get-OpenAuthenticodeSslDotComKey` due to lack of use
 * Added the following cmdlets
   * [Get-OpenAuthenticodeAzTrustedSigner](./docs/en-US/Get-OpenAuthenticodeAzTrustedSigner.md) - uses Azure Trusted Signer to sign the provided files
 

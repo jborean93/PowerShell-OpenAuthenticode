@@ -6,6 +6,20 @@ Describe "PE Binary Authenticode" {
             [System.Security.Cryptography.X509Certificates.X509BasicConstraintsExtension]::new($true, $false, 0, $true)
         )
         $cert = New-CodeSigningCert -Subject CN=PowerShell -Issuer $caCert
+        $rsaKey = [System.Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPrivateKey($cert)
+
+        # Newer Linux distributions do not support SHA1 signatures in their
+        # OpenSSL policies. This disables the SHA1 tests if this fails.
+        $skipSha1 = $false
+        try {
+            $null = $rsaKey.SignData(
+                [Array]::Empty[byte](),
+                [System.Security.Cryptography.HashAlgorithmName]::SHA1,
+                [System.Security.Cryptography.RSASignaturePadding]::Pkcs1)
+        }
+        catch [System.Security.Cryptography.CryptographicException] {
+            $skipSha1 = $true
+        }
 
         $caCertECDSA = New-X509Certificate -Subject CN=PowerShellCA-ECDSA -Extension @(
             [System.Security.Cryptography.X509Certificates.X509BasicConstraintsExtension]::new($true, $false, 0, $true)
@@ -40,21 +54,21 @@ Describe "PE Binary Authenticode" {
     }
 
     It "Gets multiple signatures from PE with 2 hash algorithms" {
-        $filePath = Join-Path $PSScriptRoot data paexec_1_30.exe
-        $actual = Get-OpenAuthenticodeSignature -Path $filePath
+        $filePath = Join-Path $PSScriptRoot data test-dual-signed.exe
+        $actual = Get-OpenAuthenticodeSignature -Path $filePath -SkipCertificateCheck
 
         $actual.Count | Should -Be 2
         $actual[0].Path | Should -Be $filePath
-        $actual[0].Certificate.Thumbprint | Should -Be BAE492CDA57A6483A65371631409F7CF41989B2B
-        $actual[0].HashAlgorithm | Should -Be SHA1
-        $actual[0].TimeStampInfo.Certificate.Thumbprint | Should -Be F387224D8633829235A994BCBD8F96E9FE1C7C73
+        $actual[0].Certificate.Thumbprint | Should -Be 4F6E21FA68307EA4393451458CBCF08AAB98BD30
+        $actual[0].HashAlgorithm | Should -Be SHA256
+        $actual[0].TimeStampInfo.Certificate.Thumbprint | Should -Be DBD385EE62DBD23E7BE4F67148508724D5865B45
         $actual[0].TimeStampInfo.HashAlgorithm | Should -Be SHA256
 
         $actual[1].Path | Should -Be $filePath
-        $actual[1].Certificate.Thumbprint | Should -Be BAE492CDA57A6483A65371631409F7CF41989B2B
-        $actual[1].HashAlgorithm | Should -Be SHA256
-        $actual[1].TimeStampInfo.Certificate.Thumbprint | Should -Be F387224D8633829235A994BCBD8F96E9FE1C7C73
-        $actual[1].TimeStampInfo.HashAlgorithm | Should -Be SHA1
+        $actual[1].Certificate.Thumbprint | Should -Be 4F6E21FA68307EA4393451458CBCF08AAB98BD30
+        $actual[1].HashAlgorithm | Should -Be SHA384
+        $actual[1].TimeStampInfo.Certificate.Thumbprint | Should -Be DBD385EE62DBD23E7BE4F67148508724D5865B45
+        $actual[1].TimeStampInfo.HashAlgorithm | Should -Be SHA384
     }
 
     It "Signs a dll with the default hash" {
@@ -199,6 +213,10 @@ Describe "PE Binary Authenticode" {
     ) {
         param ($Name)
 
+        if ($Name -eq "SHA1" -and $skipSha1) {
+            Set-ItResult -Skipped -Because "Current platform does not support SHA1 signatures."
+        }
+
         $setParams = @{
             Path = $exePath
             Certificate = $cert
@@ -221,9 +239,9 @@ Describe "PE Binary Authenticode" {
     }
 
     It "Signs a script with ECDSA hash <Name>" -TestCases @(
-        @{Name = "SHA1" },
-        @{Name = "SHA256" },
-        @{Name = "SHA384" },
+        @{Name = "SHA1" }
+        @{Name = "SHA256" }
+        @{Name = "SHA384" }
         @{Name = "SHA512" }
     ) {
         param ($Name)

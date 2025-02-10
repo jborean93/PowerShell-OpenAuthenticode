@@ -26,11 +26,12 @@ Describe "Set-OpenAuthenticodeSignature" {
         $null = New-Item -Path temp:/folder -ItemType Directory -Force
         $null = New-Item -Path $folder -Name script1.ps1 -Force -Value "Write-Host test`r`n"
         $null = New-Item -Path $folder -Name script2.ps1 -Force -Value "Write-Host test`r`n"
+        $null = New-Item -Path $folder -Name script3.ps1 -Force -Value "Write-Host test2`r`n"
 
         Set-OpenAuthenticodeSignature -Path $folder/*.ps1 @setParams
 
         $actual = Get-OpenAuthenticodeSignature -Path $folder/*.ps1 @trustParams
-        $actual.Count | Should -Be 2
+        $actual.Count | Should -Be 3
     }
 
     It "Fails with -Path non filesystem" {

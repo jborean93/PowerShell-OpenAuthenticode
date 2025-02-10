@@ -373,6 +373,11 @@ public sealed class GetOpenAuthenticodeSignature : OpenAuthenticodeSignatureBase
 
 public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatureBase
 {
+    private bool _disposeProvider;
+    private HashAlgorithmName _hashAlgo = default!;
+    private KeyProvider? _provider;
+    private readonly List<HashOperation> _operations = [];
+
     [Parameter(
         Mandatory = true,
         Position = 0,
@@ -468,50 +473,48 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
 
     protected abstract bool Append { get; }
 
-    protected override async Task ProcessRecordAsync()
+    protected override void BeginProcessing()
     {
-        X509Certificate2 cert;
-        AsymmetricAlgorithm? key = null;
         if (ParameterSetName.EndsWith("Certificate"))
         {
             Debug.Assert(Certificate != null);
-            cert = Certificate;
+            _disposeProvider = true;
+
+            KeyType keyType = Certificate.GetOpenAuthenticodeKeyType();
+            _provider = keyType switch
+            {
+                KeyType.RSA => new ManagedRSAKeyProvider(Certificate),
+                KeyType.ECDsa => new ManagedECDsaKeyProvider(Certificate),
+                _ => throw new NotImplementedException(),
+            };
         }
         else
         {
             Debug.Assert(Key != null);
-            cert = Key.Certificate;
-            key = Key.Key;
+            _provider = Key;
         }
 
-        (string, ProviderInfo)[] paths = NormalizePaths();
+        _hashAlgo = HashAlgorithm ?? _provider.DefaultHashAlgorithm ?? HashAlgorithmName.SHA256;
 
-        // For csc based API they need to provide the hashes to sign before
-        // they send the request. To make this more efficient and to avoid
-        // prompting for user input per file we get these hashes to provide
-        // to the custom key before actually signing the data.
-        AsymmetricAlgorithm? captureKey = GetCapturingKey(cert);
-        if (captureKey == null)
+        HashAlgorithmName[]? allowedAlgorithms = _provider.AllowedAlgorithms;
+        if (allowedAlgorithms is not null && allowedAlgorithms.Contains(_hashAlgo))
         {
-            string pubKeyOid = cert.PublicKey.Oid.Value ?? "";
-            if (!string.IsNullOrWhiteSpace(cert.PublicKey.Oid.FriendlyName))
-            {
-                pubKeyOid += $" - {cert.PublicKey.Oid.FriendlyName}";
-            }
-
-            string msg = $"Unknown certificate algorithm requested '{pubKeyOid}', cannot use this certificate for signing";
+            string msg = $"The requested hash algorithm '{_hashAlgo.Name}' is not allowed by the key provider";
             ErrorRecord err = new(
                 new ArgumentException(msg),
-                "SetSignatureUnknownCertificateAlgorithm",
+                "SetSignatureInvalidHashAlgorithm",
                 ErrorCategory.InvalidArgument,
-                cert
-            );
+                _hashAlgo);
             ThrowTerminatingError(err);
             return;
         }
+    }
 
-        List<HashOperation> operations = new();
-        HashAlgorithmName hashAlgo = HashAlgorithm ?? Key?.DefaultHashAlgorithm ?? HashAlgorithmName.SHA256;
+    protected override async Task ProcessRecordAsync()
+    {
+        Debug.Assert(_provider is not null);
+
+        (string, ProviderInfo)[] paths = NormalizePaths();
 
         foreach ((string path, ProviderInfo psProvider) in paths)
         {
@@ -542,7 +545,7 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
                 IAuthenticodeProvider provider;
                 if (Provider != null && Provider != AuthenticodeProvider.NotSpecified)
                 {
-                    provider = ProviderFactory.Create((AuthenticodeProvider)Provider, fileData, fileEncoding: Encoding);
+                    provider = ProviderFactory.Create(Provider.Value, fileData, fileEncoding: Encoding);
                 }
                 else
                 {
@@ -550,7 +553,7 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
                     provider = ProviderFactory.Create(ext, fileData, fileEncoding: Encoding);
                 }
 
-                Oid digestOid = SpcIndirectData.OidFromHashAlgorithm(hashAlgo);
+                Oid digestOid = SpcIndirectData.OidFromHashAlgorithm(_hashAlgo);
                 SpcIndirectData dataContent = provider.HashData(digestOid);
                 ContentInfo ci = new(SpcIndirectData.OID, dataContent.GetBytes());
                 AsnEncodedData[] attributesToSign = provider.GetAttributesToSign();
@@ -565,18 +568,24 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
                     SignatureHelper.CreateSignature(
                         ci,
                         attributesToSign,
-                        hashAlgo,
-                        cert,
+                        _hashAlgo,
+                        _provider.Certificate,
                         IncludeOption,
-                        captureKey,
+                        _provider.Key,
                         null,
                         null,
                         true);
                 }
                 catch (CapturedHashException e)
                 {
-                    Key?.RegisterHashToSign(e.Hash, fileData, hashAlgo);
-                    operations.Add(new(path, provider, fileData, e.Hash, ci, digestOid, attributesToSign));
+                    _provider.RegisterHashAndContext(path, e.Hash);
+                    HashOperation operation = new(
+                        Path: path,
+                        Provider: provider,
+                        AuthenticodeDigest: e.Hash,
+                        ContentInfo: ci,
+                        SignedAttributes: attributesToSign);
+                    _operations.Add(operation);
                     continue;
                 }
 
@@ -595,25 +604,30 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
             }
         }
 
-        // Let the custom key know there are no more hashes for this cmdlet call
-        // and it is free to do any pre-work for calculating the signature.
-        if (Key != null)
-        {
-            await Key.AuthorizeRegisteredHashes(this);
-        }
+        await base.ProcessRecordAsync();
+    }
 
-        foreach (HashOperation operation in operations)
+    protected override async Task EndProcessingAsync()
+    {
+        Debug.Assert(_provider is not null);
+
+        // Let the key provider know that we are done with the hashing
+        await _provider.FinalizeHashAsync(
+            this,
+            _hashAlgo).ConfigureAwait(false);
+
+        foreach (HashOperation operation in _operations)
         {
             try
             {
-                WriteVerbose($"Setting file '{operation.Path}' signature with provider {operation.Provider.Provider} with {hashAlgo.Name} and timestamp server '{TimeStampServer}'");
+                WriteVerbose($"Setting file '{operation.Path}' signature with provider {operation.Provider.Provider} with {_hashAlgo} and timestamp server '{TimeStampServer}'");
                 SignedCms signInfo = SignatureHelper.CreateSignature(
-                    operation.Content,
+                    operation.ContentInfo,
                     operation.SignedAttributes,
-                    hashAlgo,
-                    cert,
+                    _hashAlgo,
+                    _provider.Certificate,
                     IncludeOption,
-                    key,
+                    _provider.Key,
                     TimeStampServer,
                     TimeStampHashAlgorithm,
                     Silent);
@@ -645,30 +659,26 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
         }
     }
 
-    private static AsymmetricAlgorithm? GetCapturingKey(X509Certificate2 certificate)
+    protected override void Dispose(bool isDisposing)
     {
-        // Dotnet only supports DSA, RSA, and ECDSA right now. DSA isn't used
-        // anymore so we only care about RSA and ECDSA.
-        if (certificate.PublicKey.GetRSAPublicKey() != null)
+        if (isDisposing)
         {
-            return new RSACaptureHashKey();
-        }
-        else if (certificate.PublicKey.GetECDsaPublicKey() != null)
-        {
-            return new ECDsaCaptureHashKey();
+            _provider?.ClearHashOperations();
+            if (_disposeProvider)
+            {
+                _provider?.Dispose();
+            }
         }
 
-        return null;
+        base.Dispose(isDisposing);
     }
 }
 
 internal sealed record HashOperation(
     string Path,
     IAuthenticodeProvider Provider,
-    byte[] FileData,
-    byte[] DataHash,
-    ContentInfo Content,
-    Oid DigestOid,
+    byte[] AuthenticodeDigest,
+    ContentInfo ContentInfo,
     AsnEncodedData[] SignedAttributes
 );
 

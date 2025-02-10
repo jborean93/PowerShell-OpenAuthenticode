@@ -26,9 +26,6 @@ Gets an Azure Trusted Signer key for use with Authenticode signing.
 ### [Get-OpenAuthenticodeSignature](Get-OpenAuthenticodeSignature.md)
 Gets information about the Authenticode signature for a file.
 
-### [Get-OpenAuthenticodeSslDotComKey](Get-OpenAuthenticodeSslDotComKey.md)
-Gets a SSL.com certificate key for use with Authenticode signing.
-
 ### [Set-OpenAuthenticodeSignature](Set-OpenAuthenticodeSignature.md)
 Set an authenticode signature on a file.
 
