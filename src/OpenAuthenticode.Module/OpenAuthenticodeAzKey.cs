@@ -32,7 +32,11 @@ public sealed class GetOpenAuthenticodeAzKey : AsyncPSCmdlet
         {
             TokenCredential cred = TokenCredentialBuilder.GetTokenCredential(TokenSource);
 
-            CertificateClient certClient = new(new Uri(keyVaultUrl), cred);
+            CertificateClientOptions options = new();
+            options.Diagnostics.IsLoggingContentEnabled = false;
+            options.Diagnostics.IsLoggingEnabled = false;
+            options.Diagnostics.IsTelemetryEnabled = false;
+            CertificateClient certClient = new(new Uri(keyVaultUrl), cred, options: options);
             KeyVaultCertificateWithPolicy certInfo = await certClient.GetCertificateAsync(
                 Certificate).ConfigureAwait(false);
 

@@ -496,10 +496,11 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
 
         _hashAlgo = HashAlgorithm ?? _provider.DefaultHashAlgorithm ?? HashAlgorithmName.SHA256;
 
-        HashAlgorithmName[]? allowedAlgorithms = _provider.AllowedAlgorithms;
-        if (allowedAlgorithms is not null && allowedAlgorithms.Contains(_hashAlgo))
+        HashSet<string> allowedAlgorithms = _provider.AllowedAlgorithms;
+        if (_hashAlgo.Name is not null && allowedAlgorithms.Count > 0 && !allowedAlgorithms.Contains(_hashAlgo.Name))
         {
-            string msg = $"The requested hash algorithm '{_hashAlgo.Name}' is not allowed by the key provider";
+            string allowedAlgos = string.Join(", ", allowedAlgorithms.OrderBy(h => h));
+            string msg = $"The requested hash algorithm '{_hashAlgo.Name}' is not allowed by the key provider. Allowed algorithms: {allowedAlgos}.";
             ErrorRecord err = new(
                 new ArgumentException(msg),
                 "SetSignatureInvalidHashAlgorithm",
@@ -612,9 +613,13 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
         Debug.Assert(_provider is not null);
 
         // Let the key provider know that we are done with the hashing
-        await _provider.FinalizeHashAsync(
+        bool res = await _provider.FinalizeHashAsync(
             this,
             _hashAlgo).ConfigureAwait(false);
+        if (!res)
+        {
+            return;
+        }
 
         foreach (HashOperation operation in _operations)
         {

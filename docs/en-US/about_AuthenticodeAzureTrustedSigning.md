@@ -170,6 +170,21 @@ Set-OpenAuthenticodeSignature -FilePath $path @signParams
 
 In this example we are authenticating to the Azure API with `Connect-AzAccount` which is one of the locations our Azure REST client will use for authentication.
 From there we are retrieving a reference to the Azure Trusted Signing certificate profile to use for the signing operation.
+The principal being authenticated must be assigned the role `'Trusted Signing Certificate Profile Signer'` on the certificate profile being used.
+If you wish to define a custom role it must have the following `Actions` and `DataActions`:
+
+```json
+{
+    "Actions": [],
+    "DataActions": [
+        "Microsoft.CodeSigning/certificateProfiles/Sign/action"
+    ]
+}
+```
+
+It can be scoped subscription wide, the resource group, the trusted signing account, or the certificate profile.
+
+_Note: As of writing, Azure Trusted Signing is in preview so this may change if Microsoft adjust the backend._.
 
 If using GitHub Actions it is possible to be able to use [Open ID Connect](https://learn.microsoft.com/en-us/azure/active-directory/develop/v2-protocols-oidc) (`OIDC`) for authentication.
 It is highly recommended to use `OIDC` when available as the client secret does not need to be stored in the repo.

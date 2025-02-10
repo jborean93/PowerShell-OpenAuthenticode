@@ -84,6 +84,10 @@ Describe "Get-OpenAuthenticodeAzKey" -Skip:(-not (Test-Available)) {
             Set-ItResult -Skipped -Because "Env var AZURE_KEYVAULT_RSA_CERTIFICATE is not set"
         }
 
+        if ($Name -eq "SHA1" -and $Global:SkipSha1) {
+            Set-ItResult -Skipped -Because "Current platform does not support SHA1 signatures."
+        }
+
         $scriptPath = New-Item -Path temp: -Name script.ps1 -Force -Value "Write-Host test`r`n"
         $setParams = @{
             Path = $scriptPath
@@ -103,6 +107,33 @@ Describe "Get-OpenAuthenticodeAzKey" -Skip:(-not (Test-Available)) {
 
         If (Get-Command -Name Get-AuthenticodeSignature -ErrorAction Ignore) {
             $actual = Get-AuthenticodeSignature -FilePath $scriptPath.FullName
+            $actual.Status | Should -Not -Be HashMismatch
+        }
+    }
+
+    It "Signs two scripts in separate operations" {
+        if (-not $rsaKey) {
+            Set-ItResult -Skipped -Because "Env var AZURE_KEYVAULT_RSA_CERTIFICATE is not set"
+        }
+
+        $scriptPath1 = New-Item -Path temp: -Name script1.ps1 -Force -Value "Write-Host test1`r`n"
+        $scriptPath2 = New-Item -Path temp: -Name script2.ps1 -Force -Value "Write-Host test2`r`n"
+        Set-OpenAuthenticodeSignature -Path $scriptPath1 -Key $rsaKey
+        Set-OpenAuthenticodeSignature -Path $scriptPath2 -Key $rsaKey
+
+        $actual = Get-OpenAuthenticodeSignature -Path $scriptPath1 -SkipCertificateCheck
+        $actual.Certificate.GetKeyAlgorithm() | Should -Be "1.2.840.113549.1.1.1"  # RSA
+
+        If (Get-Command -Name Get-AuthenticodeSignature -ErrorAction Ignore) {
+            $actual = Get-AuthenticodeSignature -FilePath $scriptPath1.FullName
+            $actual.Status | Should -Not -Be HashMismatch
+        }
+
+        $actual = Get-OpenAuthenticodeSignature -Path $scriptPath2 -SkipCertificateCheck
+        $actual.Certificate.GetKeyAlgorithm() | Should -Be "1.2.840.113549.1.1.1"  # RSA
+
+        If (Get-Command -Name Get-AuthenticodeSignature -ErrorAction Ignore) {
+            $actual = Get-AuthenticodeSignature -FilePath $scriptPath2.FullName
             $actual.Status | Should -Not -Be HashMismatch
         }
     }
@@ -137,9 +168,17 @@ Describe "Get-OpenAuthenticodeAzKey" -Skip:(-not (Test-Available)) {
     }
 
     It "It attempts to sign ECDSA key with the wrong algorithm" {
+        $hashAlgorithm = $null
+        $expectedAlgorithm = $null
         $key = $null
         foreach ($kvp in $ecdsaKeys.GetEnumerator()) {
             if ($null -ne $kvp.Value) {
+                $hashAlgorithm, $expectedAlgorithm = switch ($kvp.Name) {
+                    P256 { 'SHA384'; 'SHA256' }
+                    P256K { 'SHA384'; 'SHA256' }
+                    P384 { 'SHA256'; 'SHA384' }
+                    P521 { 'SHA256'; 'SHA512' }
+                }
                 $key = $kvp.Value
                 break
             }
@@ -153,10 +192,12 @@ Describe "Get-OpenAuthenticodeAzKey" -Skip:(-not (Test-Available)) {
         $setParams = @{
             Path = $scriptPath
             Key = $key
-            HashAlgorithm = 'SHA1'
+            HashAlgorithm = $hashAlgorithm
         }
-        Set-OpenAuthenticodeSignature @setParams -ErrorAction SilentlyContinue -ErrorVariable err
+        $err = {
+            Set-OpenAuthenticodeSignature @setParams
+        } | Should -Throw -PassThru
         $err.Count | Should -Be 1
-        [string]$err[0] | Should -BeLike "The digest size 20 is not valid for digest algorithm of this ECDSA key '*'. Ensure -HashAlgorithm * was specified or omit *"
+        [string]$err[0] | Should -Be "The requested hash algorithm '$hashAlgorithm' is not allowed by the key provider. Allowed algorithms: $expectedAlgorithm."
     }
 }

@@ -17,10 +17,10 @@ public sealed class AzureKeyAlgorithms
 
     public static (string, HashAlgorithmName) GetAzureEcdsaInfo(string curve) => curve switch
     {
-        "P256" => ("ES256", HashAlgorithmName.SHA256),
-        "P256K" => ("ES256", HashAlgorithmName.SHA256),
-        "P384" => ("ES384", HashAlgorithmName.SHA384),
-        "P521" => ("ES512", HashAlgorithmName.SHA512),
+        "P-256" => ("ES256", HashAlgorithmName.SHA256),
+        "P-256K" => ("ES256K", HashAlgorithmName.SHA256),
+        "P-384" => ("ES384", HashAlgorithmName.SHA384),
+        "P-521" => ("ES512", HashAlgorithmName.SHA512),
         _ => throw new NotImplementedException(
             $"Support for the ECDSA curve requested {curve} for this ECDSA key has not been implemented."),
     };

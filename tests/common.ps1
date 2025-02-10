@@ -10,6 +10,25 @@ if (-not (Get-Variable IsWindows -ErrorAction SilentlyContinue)) {
     Set-Variable -Name IsWindows -Value $true -Scope Global
 }
 
+# Newer Linux distributions do not support SHA1 signatures in their
+# OpenSSL policies. This disables the SHA1 tests if this fails.
+if (-not (Get-Variable -Name SkipSha1 -Scope Global -ErrorAction SilentlyContinue)) {
+    $Global:SkipSha1 = $false
+    $rsa = [System.Security.Cryptography.RSA]::Create()
+    try {
+        $null = $rsa.SignData(
+            [Array]::Empty[byte](),
+            [System.Security.Cryptography.HashAlgorithmName]::SHA1,
+            [System.Security.Cryptography.RSASignaturePadding]::Pkcs1)
+    }
+    catch [System.Security.Cryptography.CryptographicException] {
+        $Global:SkipSha1 = $true
+    }
+    finally {
+        $rsa.Dispose()
+    }
+}
+
 Function global:New-X509Certificate {
     [CmdletBinding()]
     param (

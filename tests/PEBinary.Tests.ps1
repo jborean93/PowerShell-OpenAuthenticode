@@ -8,19 +8,6 @@ Describe "PE Binary Authenticode" {
         $cert = New-CodeSigningCert -Subject CN=PowerShell -Issuer $caCert
         $rsaKey = [System.Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPrivateKey($cert)
 
-        # Newer Linux distributions do not support SHA1 signatures in their
-        # OpenSSL policies. This disables the SHA1 tests if this fails.
-        $skipSha1 = $false
-        try {
-            $null = $rsaKey.SignData(
-                [Array]::Empty[byte](),
-                [System.Security.Cryptography.HashAlgorithmName]::SHA1,
-                [System.Security.Cryptography.RSASignaturePadding]::Pkcs1)
-        }
-        catch [System.Security.Cryptography.CryptographicException] {
-            $skipSha1 = $true
-        }
-
         $caCertECDSA = New-X509Certificate -Subject CN=PowerShellCA-ECDSA -Extension @(
             [System.Security.Cryptography.X509Certificates.X509BasicConstraintsExtension]::new($true, $false, 0, $true)
         ) -KeyAlgorithm ECDSA_nistP256
@@ -213,7 +200,7 @@ Describe "PE Binary Authenticode" {
     ) {
         param ($Name)
 
-        if ($Name -eq "SHA1" -and $skipSha1) {
+        if ($Name -eq "SHA1" -and $Global:SkipSha1) {
             Set-ItResult -Skipped -Because "Current platform does not support SHA1 signatures."
         }
 
