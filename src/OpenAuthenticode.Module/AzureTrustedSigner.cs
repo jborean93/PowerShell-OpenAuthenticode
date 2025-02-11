@@ -49,11 +49,11 @@ public sealed class AzureTrustedSigner : KeyProvider
             xCorrelationId: _correlationId,
             cancellationToken: cmdlet.CancelToken).ConfigureAwait(false);
 
-        cmdlet.WriteVerbose($"Waiting for Azure Trusted Signing operation for '{path}' to complete, OperationId '{operation.Id}'.");
+        cmdlet.WriteVerbose($"Waiting for Azure Trusted Signing operation for '{path}' to complete.");
         SignStatus response = await operation.WaitForCompletionAsync(
             cancellationToken: cmdlet.CancelToken).ConfigureAwait(false);
 
-        cmdlet.WriteVerbose($"Azure Trusted Signing operation '{operation.Id}' completed with status '{response.Status}'.");
+        cmdlet.WriteVerbose($"Azure Trusted Signing operation for '{path}' completed with status '{response.Status}'.");
         return response.Signature;
     }
 }

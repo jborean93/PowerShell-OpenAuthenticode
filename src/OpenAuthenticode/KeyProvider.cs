@@ -37,7 +37,12 @@ public abstract class KeyProvider : IDisposable
         _supportsParallelSigning = supportsParallelSigning;
 
         Certificate = certificate;
-        AllowedAlgorithms = allowedAlgorithms;
+        AllowedAlgorithms = new HashSet<string>(StringComparer.OrdinalIgnoreCase);;
+        if (allowedAlgorithms is not null)
+        {
+            AllowedAlgorithms.UnionWith(
+                allowedAlgorithms.Select(static i => i.Name).Where(static i => i is not null).Cast<string>());
+        }
         DefaultHashAlgorithm = defaultHashAlgorithm;
         Key = keyType switch
         {
@@ -55,7 +60,7 @@ public abstract class KeyProvider : IDisposable
     /// <summary>
     /// The allowed hash algorithms for this key.
     /// </summary>
-    internal HashAlgorithmName[]? AllowedAlgorithms { get; init; }
+    internal HashSet<string> AllowedAlgorithms { get; init; }
 
     /// <summary>
     /// The hash algorithm to use for this key if none was specified.
@@ -158,26 +163,23 @@ public abstract class KeyProvider : IDisposable
             }
             catch (Exception)
             {
-                StringBuilder msg = new();
-                msg.Append("Failure when attempting to sign in parallel, the following errors occurred.");
                 for (int i = 0; i < signTasks.Length; i++)
                 {
                     Task t = signTasks[i];
                     if (t.Exception is not null)
                     {
-                        msg.AppendLine().Append($"  {operations[i].Path}: {t.Exception}");
+                        ErrorRecord err = new(
+                            t.Exception.InnerException,
+                            "ParallelSigningError",
+                            ErrorCategory.NotSpecified,
+                            operations[i].Path)
+                        {
+                            ErrorDetails = new($"Failed to sign {operations[i].Path}: {t.Exception.InnerException!.Message}"),
+                        };
+                        cmdlet.WriteError(err);
                     }
                 }
 
-                ErrorRecord err = new(
-                    waitTask.Exception,
-                    "ParallelSigningError",
-                    ErrorCategory.NotSpecified,
-                    null)
-                {
-                    ErrorDetails = new(msg.ToString()),
-                };
-                cmdlet.WriteError(err);
                 return false;
             }
 
@@ -208,7 +210,7 @@ public abstract class KeyProvider : IDisposable
                         ErrorCategory.NotSpecified,
                         path)
                     {
-                        ErrorDetails = new ErrorDetails($"Failed to sign {path}: {e.Message}"),
+                        ErrorDetails = new($"Failed to sign {path}: {e.Message}"),
                     };
                     cmdlet.WriteError(err);
                     return false;
