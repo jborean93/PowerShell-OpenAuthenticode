@@ -1,6 +1,6 @@
 # Changelog for OpenAuthenticode
 
-## v0.6.0 - TBD
+## v0.6.0 - 2025-02-12
 
 * Added the `-TokenSource` parameter for `Get-OpenAuthenticodeAzKey` to specify the authentication method used.
 * Move all signing operations to the `EndProcessing` of the cmdlet to batch up multiple requests if present.
