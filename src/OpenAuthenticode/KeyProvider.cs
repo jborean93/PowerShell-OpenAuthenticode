@@ -46,8 +46,8 @@ public abstract class KeyProvider : IDisposable
         DefaultHashAlgorithm = defaultHashAlgorithm;
         Key = keyType switch
         {
-            KeyType.RSA => new CachedRSAPrivateKey(this),
-            KeyType.ECDsa => new CachedECDsaPrivateKey(this),
+            KeyType.RSA => new CachedRSAPrivateKey(this, certificate.GetRSAPublicKey()!.KeySize),
+            KeyType.ECDsa => new CachedECDsaPrivateKey(this, certificate.GetECDsaPublicKey()!.KeySize),
             _ => throw new NotImplementedException(),
         };
     }
@@ -265,7 +265,7 @@ public abstract class KeyProvider : IDisposable
     {
         private readonly KeyProvider _provider;
 
-        public CachedRSAPrivateKey(KeyProvider provider)
+        public CachedRSAPrivateKey(KeyProvider provider, int keySize) : base(keySize)
         {
             _provider = provider;
         }
@@ -278,7 +278,7 @@ public abstract class KeyProvider : IDisposable
     {
         private readonly KeyProvider _provider;
 
-        public CachedECDsaPrivateKey(KeyProvider provider)
+        public CachedECDsaPrivateKey(KeyProvider provider, int keySize) : base(keySize)
         {
             _provider = provider;
         }

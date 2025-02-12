@@ -79,7 +79,8 @@ public sealed class GetOpenAuthenticodeAzTrustedSigner : AsyncPSCmdlet
         WriteVerbose("Importing certificate chain");
         X509Certificate2Collection chain = [];
         chain.Import(rawChain);
-        X509Certificate2 cert = chain[0];
+
+        X509Certificate2 cert = CertificateHelper.GetAzureTrustedSigningCertificate(chain, cmdlet: this);
         WriteVerbose($"Creating AzureTrustedSigner object with cert '{cert.SubjectName.Name}' - {cert.Thumbprint}");
 
         try

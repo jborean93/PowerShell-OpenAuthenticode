@@ -5,6 +5,11 @@ namespace OpenAuthenticode;
 
 internal abstract class ECDsaPrivateKey : ECDsa
 {
+    public ECDsaPrivateKey(int keySize)
+    {
+        KeySizeValue = keySize;
+    }
+
     public abstract byte[] SignHashCore(byte[] hash);
 
     public override byte[] SignHash(byte[] hash) => SignHashCore(hash);

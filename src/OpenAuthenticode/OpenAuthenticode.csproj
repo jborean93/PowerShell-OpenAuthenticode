@@ -28,4 +28,9 @@
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="all"/>
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="OpenAuthenticode.Module" />
+    <InternalsVisibleTo Include="OpenAuthenticodeTests" />
+  </ItemGroup>
+
 </Project>
