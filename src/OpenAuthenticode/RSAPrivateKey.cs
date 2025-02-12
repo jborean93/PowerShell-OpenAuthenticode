@@ -5,6 +5,11 @@ namespace OpenAuthenticode;
 
 internal abstract class RSAPrivateKey : RSA
 {
+    public RSAPrivateKey(int keySize)
+    {
+        KeySizeValue = keySize;
+    }
+
     public abstract byte[] SignHashCore(byte[] hash, HashAlgorithmName hashAlgorithm);
 
     public override byte[] SignHash(

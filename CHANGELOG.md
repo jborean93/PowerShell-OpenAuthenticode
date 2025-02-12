@@ -1,5 +1,9 @@
 # Changelog for OpenAuthenticode
 
+## v0.6.1 - 2025-02-12
+
+* Fix up certificate selection logic for `Get-OpenAuthenticodeAzTrustedSigner` to retrieve the correct leaf certificate on Windows.
+
 ## v0.6.0 - 2025-02-12
 
 * Added the `-TokenSource` parameter for `Get-OpenAuthenticodeAzKey` to specify the authentication method used.
