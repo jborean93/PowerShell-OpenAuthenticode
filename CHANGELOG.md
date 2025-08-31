@@ -1,5 +1,9 @@
 # Changelog for OpenAuthenticode
 
+## v0.6.2 - TBD
+
+* Update Azure dependencies to the latest versions
+
 ## v0.6.1 - 2025-02-12
 
 * Fix up certificate selection logic for `Get-OpenAuthenticodeAzTrustedSigner` to retrieve the correct leaf certificate on Windows.

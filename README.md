@@ -48,13 +48,15 @@ The [Add-OpenAuthenticodeSignature](docs/en-US/Add-OpenAuthenticodeSignature.md)
 
 The easiest way to install this module is through [PowerShellGet](https://docs.microsoft.com/en-us/powershell/gallery/overview).
 
-You can install this module by running;
+You can install this module by running either `Install-PSResource` or `Install-Module`;
 
 ```powershell
 # Install for only the current user
+Install-PSResource -Name OpenAuthenticode -Scope CurrentUser
 Install-Module -Name OpenAuthenticode -Scope CurrentUser
 
 # Install for all users
+Install-PSResource -Name OpenAuthenticode -Scope AllUsers
 Install-Module -Name OpenAuthenticode -Scope AllUsers
 ```
 

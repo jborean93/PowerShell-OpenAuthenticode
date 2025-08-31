@@ -63,19 +63,25 @@ task BuildDocs {
 }
 
 task Sign {
-    $vaultName = $env:AZURE_KEYVAULT_NAME
-    $vaultCert = $env:AZURE_KEYVAULT_CERT
-    if (-not $vaultName -or -not $vaultCert) {
+    $accountName = $env:AZURE_TS_NAME
+    $profileName = $env:AZURE_TS_PROFILE
+    $endpoint = $env:AZURE_TS_ENDPOINT
+    if (-not $accountName -or -not $profileName -or -not $endpoint) {
         return
     }
 
     Import-Module -Name (Join-Path $Manifest.ReleasePath "$($Manifest.Module.Name).psd1") -ErrorAction Stop
 
-    Write-Host "Authenticating with Azure KeyVault '$vaultName' for signing" -ForegroundColor Cyan
-    $key = Get-OpenAuthenticodeAzKey -Vault $vaultName -Certificate $vaultCert
+    Write-Host "Authenticating with Azure TrustedSigning $accountName $profileName for signing" -ForegroundColor Cyan
+    $keyParams = @{
+        AccountName = $accountName
+        ProfileName = $profileName
+        Endpoint = $endpoint
+    }
+    $key = Get-OpenAuthenticodeAzTrustedSigner @keyParams
     $signParams = @{
         Key = $key
-        TimeStampServer = 'http://timestamp.digicert.com'
+        TimeStampServer = 'http://timestamp.acs.microsoft.com'
     }
 
     $toSign = Get-ChildItem -LiteralPath $Manifest.ReleasePath -Recurse -ErrorAction SilentlyContinue |
