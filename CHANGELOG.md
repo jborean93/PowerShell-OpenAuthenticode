@@ -1,6 +1,6 @@
 # Changelog for OpenAuthenticode
 
-## v0.6.2 - TBD
+## v0.6.2 - 2025-09-01
 
 * Update Azure dependencies to the latest versions
 
@@ -47,3 +47,4 @@
 ## v0.1.0 - 2023-03-17
 
 + Initial version of the `OpenAuthenticode` module
+
