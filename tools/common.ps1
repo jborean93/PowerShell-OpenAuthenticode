@@ -183,7 +183,7 @@ Function Assert-PowerShell {
         ARM64 { 'arm64' }
         default {
             $err = [ErrorRecord]::new(
-                [Exception]::new("Unsupported archecture requests '$_'"),
+                [Exception]::new("Unsupported architecture requests '$_'"),
                 "UnknownArch",
                 [ErrorCategory]::InvalidArgument,
                 $_
@@ -376,7 +376,7 @@ Function Install-BuildDependencies {
             return
         }
 
-        Assert-ModuleFast -Version v0.2.0
+        Assert-ModuleFast -Version v0.6.0
 
         $installParams = @{
             ModulesToInstall = $modules
