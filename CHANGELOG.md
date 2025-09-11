@@ -1,5 +1,9 @@
 # Changelog for OpenAuthenticode
 
+## v0.6.3 - 2025-09-12
+
+* Provide better when an invalid URI was specified for `Get-OpenAuthenticodeAzTrustedSigner -Endpoint`
+
 ## v0.6.2 - 2025-09-01
 
 * Update Azure dependencies to the latest versions

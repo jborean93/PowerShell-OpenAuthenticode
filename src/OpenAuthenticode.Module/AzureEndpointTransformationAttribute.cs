@@ -52,6 +52,20 @@ public sealed class AzureEndpointTransformationAttribute : ArgumentTransformatio
             return new Uri(WestEurope);
         }
 
-        return inputData;
+        if (Uri.TryCreate(value, UriKind.Absolute, out Uri? endpointUri))
+        {
+            return endpointUri;
+        }
+
+        string wellKnownIds = string.Join(", ", [
+            nameof(EastUS),
+            nameof(WestCentralUS),
+            nameof(WestUS2),
+            nameof(WestUS3),
+            nameof(NorthEurope),
+            nameof(WestEurope)
+        ]);
+        throw new ArgumentTransformationMetadataException(
+            $"The endpoint value '{value}' must either be a well known endpoint identifier {wellKnownIds}, or an absolute URI to an Azure endpoint.");
     }
 }

@@ -33,6 +33,14 @@ Function Test-Available {
     }
 }
 
+Describe "Get-OpenauthenticodeAzTrustedSigner - no connection" {
+    It "Throws error when using -Endpoint that is not an absolute URI or well known ID" {
+        {
+            Get-OpenAuthenticodeAzTrustedSigner -Endpoint abc
+        } | Should -Throw "*The endpoint value 'abc' must either be a well known endpoint identifier *, or an absolute URI to an Azure endpoint*"
+    }
+}
+
 Describe "Get-OpenAuthenticodeAzTrustedSigner" -Skip:(-not (Test-Available)) {
     BeforeAll {
         if ($env:AZURE_CONNECT_APPLICATION -and (Get-Command -Name Connect-AzAccount -ErrorAction SilentlyContinue)) {
