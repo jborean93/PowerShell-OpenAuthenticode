@@ -11,7 +11,8 @@ Currently the following providers have been implemented in this module.
 |Provider|File Extensions|String Contents|
 |-|-|-|
 |PowerShell|`.ps1`, `.psd1`, `.psm1`|Yes|
-|PowerShellXml|`.psc1`, `.ps1xml`|Yes|
+|PowerShellMof|`.mof`|Yes|
+|PowerShellXml|`.psc1`, `.ps1xml`, `.cdxml`|Yes|
 |PEBinary|`.dll`, `.exe`|No|
 
 The `Get-OpenAuthenticodeSignature`, `Set-OpenAuthenticodeSignature`, and `Add-OpenAuthenticodeSignature` uses the extension on the file path provided to determine what provider to use.

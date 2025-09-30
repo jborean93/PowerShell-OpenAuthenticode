@@ -260,14 +260,35 @@ internal class PowerShellScriptProvider : PowerShellProvider
 }
 
 /// <summary>
+/// Authenticode providers for PowerShell MOF files. This includes files
+/// with the extension <c>.mof</c>.
+/// </summary>
+internal class PowerShellMofProvider : PowerShellProvider
+{
+    public override AuthenticodeProvider Provider => AuthenticodeProvider.PowerShellMof;
+
+    internal static string[] FileExtensions => new[] { ".mof" };
+
+    protected override string StartComment => "/* ";
+
+    protected override string EndComment => " */";
+
+    public static PowerShellMofProvider Create(byte[] data, Encoding? fileEncoding)
+        => new PowerShellMofProvider(data, fileEncoding ?? GetScriptEncoding(data));
+
+    private PowerShellMofProvider(byte[] data, Encoding fileEncoding) : base(data, fileEncoding)
+    { }
+}
+
+/// <summary>
 /// Authenticode providers for PowerShell XML files. This includes files
-/// with the extensions <c>.psc1</c> and <c>.psm1xml</c>.
+/// with the extensions <c>.psc1</c>, <c>.psm1xml</c>, and <c>.cdxml</c>.
 /// </summary>
 internal class PowerShellXmlProvider : PowerShellProvider
 {
     public override AuthenticodeProvider Provider => AuthenticodeProvider.PowerShellXml;
 
-    internal static string[] FileExtensions => new[] { ".psc1", ".ps1xml" };
+    internal static string[] FileExtensions => new[] { ".psc1", ".ps1xml", ".cdxml" };
 
     protected override string StartComment => "<!-- ";
 

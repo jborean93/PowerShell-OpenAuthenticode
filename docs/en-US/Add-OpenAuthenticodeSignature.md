@@ -284,14 +284,15 @@ Valid providers are:
 
 * `NotSpecified` - Uses the file extension to find the provider
 * `PowerShell` - Uses the PowerShell script Authenticode provider
-* `PowerShellXml` - Uses the PowerShell script Authenticode provider for XML files like `.psc1` and `.ps1xml`
+* `PowerShellMof` - Uses the PowerShell script Authenticode provider for MOF files like `.mof`
+* `PowerShellXml` - Uses the PowerShell script Authenticode provider for XML files like `.psc1`, `.ps1xml`, and `.cdxml`
 * `PEBinary` - Windows `.exe`, `.dll` files, including cross platform dotnet assemblies
 
 ```yaml
 Type: AuthenticodeProvider
 Parameter Sets: (All)
 Aliases:
-Accepted values: NotSpecified, PowerShell, PowerShellXml, PEBinary
+Accepted values: NotSpecified, PowerShell, PowerShellMof, PowerShellXml, PEBinary
 
 Required: False
 Position: Named
