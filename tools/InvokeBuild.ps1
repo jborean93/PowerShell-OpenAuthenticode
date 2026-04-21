@@ -140,7 +140,7 @@ task UnitTests {
             'test'
             $testsPath
             '--results-directory', $tempResultsPath
-            '--collect:"XPlat Code Coverage"'
+            '--collect:XPlat Code Coverage'
             '--'
             "$runSettingsPrefix.Format=json"
             "$runSettingsPrefix.IncludeDirectory=`"$CSharpPath`""
