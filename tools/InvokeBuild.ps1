@@ -140,7 +140,7 @@ task UnitTests {
             'test'
             $testsPath
             '--results-directory', $tempResultsPath
-            '--collect:"XPlat Code Coverage"'
+            '--collect:XPlat Code Coverage'
             '--'
             "$runSettingsPrefix.Format=json"
             "$runSettingsPrefix.IncludeDirectory=`"$CSharpPath`""
@@ -173,7 +173,7 @@ task PesterTests {
     $dotnetTools = @(dotnet tool list --global) -join "`n"
     if (-not $dotnetTools.Contains('coverlet.console')) {
         Write-Host 'Installing dotnet tool coverlet.console' -ForegroundColor Yellow
-        dotnet tool install --global coverlet.console
+        dotnet tool install --global coverlet.console --version 6.0.4
     }
 
     $pwsh = Assert-PowerShell -Version $Manifest.PowerShellVersion -Arch $Manifest.PowerShellArch
@@ -244,6 +244,7 @@ task CoverageReport {
     $reportArgs = @(
         "-reports:$coveragePath"
         "-targetdir:$reportPath"
+        '-filefilters:-*.g.cs'  # Filter out source generated files
         '-reporttypes:Html_Dark;JsonSummary'
     )
     reportgenerator @reportArgs
@@ -251,8 +252,8 @@ task CoverageReport {
         throw "reportgenerator failed with RC of $LASTEXITCODE"
     }
 
-    $resultPath = [Path]::Combine($reportPath, "Summary.json")
-    Format-CoverageInfo -Path $resultPath
+    $coverageScript = [Path]::Combine($PSScriptRoot, 'CoverageReport.ps1')
+    & $coverageScript -Path $coveragePath
 }
 
 #endregion Test

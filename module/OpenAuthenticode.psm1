@@ -1,8 +1,12 @@
 # Copyright: (c) 2023, Jordan Borean (@jborean93) <jborean93@gmail.com>
 # MIT License (see LICENSE or https://opensource.org/licenses/MIT)
 
+using namespace System.IO
+using namespace System.Management.Automation
+using namespace System.Reflection
+
 $importModule = Get-Command -Name Import-Module -Module Microsoft.PowerShell.Core
-$moduleName = [System.IO.Path]::GetFileNameWithoutExtension($PSCommandPath)
+$moduleName = [Path]::GetFileNameWithoutExtension($PSCommandPath)
 
 
 # This is used to load the shared assembly in the Default ALC which then sets
@@ -13,7 +17,7 @@ $isReload = $true
 if (-not ('OpenAuthenticode.LoadContext' -as [type])) {
     $isReload = $false
 
-    Add-Type -Path ([System.IO.Path]::Combine($PSScriptRoot, 'bin', 'net8.0', "$moduleName.dll"))
+    Add-Type -Path ([Path]::Combine($PSScriptRoot, 'bin', 'net8.0', "$moduleName.dll"))
 }
 
 $mainModule = [OpenAuthenticode.LoadContext]::Initialize()
@@ -24,9 +28,9 @@ if ($innerMod) {
     # and not call the same path to set the nested module's cmdlets to the
     # current module scope.
     # https://github.com/PowerShell/PowerShell/issues/20710
-    $addExportedCmdlet = [System.Management.Automation.PSModuleInfo].GetMethod(
+    $addExportedCmdlet = [PSModuleInfo].GetMethod(
         'AddExportedCmdlet',
-        [System.Reflection.BindingFlags]'Instance, NonPublic'
+        [BindingFlags]'Instance, NonPublic'
     )
     foreach ($cmd in $innerMod.ExportedCommands.Values) {
         $addExportedCmdlet.Invoke($ExecutionContext.SessionState.Module, @(, $cmd))
