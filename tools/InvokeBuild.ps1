@@ -244,6 +244,7 @@ task CoverageReport {
     $reportArgs = @(
         "-reports:$coveragePath"
         "-targetdir:$reportPath"
+        '-filefilters:-*.g.cs'  # Filter out source generated files
         '-reporttypes:Html_Dark;JsonSummary'
     )
     reportgenerator @reportArgs
@@ -251,8 +252,8 @@ task CoverageReport {
         throw "reportgenerator failed with RC of $LASTEXITCODE"
     }
 
-    $resultPath = [Path]::Combine($reportPath, "Summary.json")
-    Format-CoverageInfo -Path $resultPath
+    $coverageScript = [Path]::Combine($PSScriptRoot, 'CoverageReport.ps1')
+    & $coverageScript -Path $coveragePath
 }
 
 #endregion Test

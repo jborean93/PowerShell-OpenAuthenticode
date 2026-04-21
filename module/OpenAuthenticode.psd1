@@ -14,7 +14,7 @@
     RootModule = 'OpenAuthenticode.psm1'
 
     # Version number of this module.
-    ModuleVersion = '0.6.3'
+    ModuleVersion = '0.7.0'
 
     # Supported PSEditions
     # CompatiblePSEditions = @()
@@ -35,7 +35,7 @@
     Description = 'Cross platform PowerShell implementation of Authenticode signing and verification'
 
     # Minimum version of the PowerShell engine required by this module
-    PowerShellVersion = '7.2'
+    PowerShellVersion = '7.4'
 
     # Minimum version of Microsoft .NET Framework required by this module. This prerequisite is valid for the PowerShell Desktop edition only.
     # DotNetFrameworkVersion = '4.7.2'

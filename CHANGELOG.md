@@ -1,5 +1,7 @@
 # Changelog for OpenAuthenticode
 
+## v0.7.0 - TBD
+
 ## v0.6.3 - 2025-09-12
 
 * Provide better when an invalid URI was specified for `Get-OpenAuthenticodeAzTrustedSigner -Endpoint`
