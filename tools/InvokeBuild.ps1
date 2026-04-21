@@ -173,7 +173,7 @@ task PesterTests {
     $dotnetTools = @(dotnet tool list --global) -join "`n"
     if (-not $dotnetTools.Contains('coverlet.console')) {
         Write-Host 'Installing dotnet tool coverlet.console' -ForegroundColor Yellow
-        dotnet tool install --global coverlet.console
+        dotnet tool install --global coverlet.console --version 6.0.4
     }
 
     $pwsh = Assert-PowerShell -Version $Manifest.PowerShellVersion -Arch $Manifest.PowerShellArch
