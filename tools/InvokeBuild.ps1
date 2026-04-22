@@ -118,6 +118,19 @@ task Package {
 
 #region Test
 
+task TestSetup {
+    $config = @{
+        codeCoverage = @{
+            Configuration = @{
+                Format = 'cobertura'
+                DeterministicReport = $env:GITHUB_ACTIONS -eq 'true'
+            }
+        }
+    }
+    $configJson = $config | ConvertTo-Json -Depth 3
+    Set-Content -Path $Manifest.TestSettingsPath -Value $configJson -Encoding UTF8
+}
+
 task UnitTests {
     $testsPath = [Path]::Combine($Manifest.TestPath, 'units')
     if (-not (Test-Path -LiteralPath $testsPath)) {
@@ -125,41 +138,23 @@ task UnitTests {
         return
     }
 
-    # dotnet test places the results in a subfolder of the results-directory.
-    # This subfolder is based on a random guid so a temp folder is used to
-    # ensure we only get the current runs results
-    $tempResultsPath = [Path]::Combine($Manifest.TestResultsPath, "TempUnit")
-    if (Test-Path -LiteralPath $tempResultsPath) {
-        Remove-Item -LiteralPath $tempResultsPath -Force -Recurse
-    }
-    New-Item -Path $tempResultsPath -ItemType Directory | Out-Null
+    Get-ChildItem -LiteralPath $testsPath -Directory | ForEach-Object {
+        Write-Host "Running unit tests for $($_.Name)" -ForegroundColor Cyan
 
-    try {
-        $runSettingsPrefix = 'DataCollectionRunSettings.DataCollectors.DataCollector.Configuration'
+        $coveragePath = [Path]::Combine($Manifest.TestResultsPath, "Unit.$($_.Name).Coverage.cobertura.xml")
         $arguments = @(
             'test'
-            $testsPath
-            '--results-directory', $tempResultsPath
-            '--collect:XPlat Code Coverage'
-            '--'
-            "$runSettingsPrefix.Format=json"
-            "$runSettingsPrefix.IncludeDirectory=`"$CSharpPath`""
+            '--project', $_.FullName
+            '--results-directory', $Manifest.TestResultsPath
+            '--coverage'
+            '--coverage-output', $coveragePath
+            '--coverage-settings', $Manifest.TestSettingsPath
         )
 
         dotnet @arguments
         if ($LASTEXITCODE) {
-            throw "Unit tests failed"
+            throw "Unit tests $($_.Name) failed"
         }
-
-        $moveParams = @{
-            Path = [Path]::Combine($tempResultsPath, "*", "*.json")
-            Destination = [Path]::Combine($Manifest.TestResultsPath, "UnitCoverage.json")
-            Force = $true
-        }
-        Move-Item @moveParams
-    }
-    finally {
-        Remove-Item -LiteralPath $tempResultsPath -Force -Recurse
     }
 }
 
@@ -171,9 +166,9 @@ task PesterTests {
     }
 
     $dotnetTools = @(dotnet tool list --global) -join "`n"
-    if (-not $dotnetTools.Contains('coverlet.console')) {
-        Write-Host 'Installing dotnet tool coverlet.console' -ForegroundColor Yellow
-        dotnet tool install --global coverlet.console --version 6.0.4
+    if (-not $dotnetTools.Contains('dotnet-coverage')) {
+        Write-Host 'Installing dotnet tool dotnet-coverage' -ForegroundColor Yellow
+        dotnet tool install --global dotnet-coverage
     }
 
     $pwsh = Assert-PowerShell -Version $Manifest.PowerShellVersion -Arch $Manifest.PowerShellArch
@@ -191,27 +186,17 @@ task PesterTests {
         '-File', $pesterScript
         '-TestPath', $Manifest.TestPath
         '-OutputFile', $resultsFile
-    ) -join '" "'
+    )
 
     $watchFolder = [Path]::Combine($Manifest.ReleasePath, 'bin', $Manifest.TestFramework)
-    $unitCoveragePath = [Path]::Combine($Manifest.TestResultsPath, "UnitCoverage.json")
-    $coveragePath = [Path]::Combine($Manifest.TestResultsPath, "Coverage.xml")
-    $sourceMappingFile = [Path]::Combine($Manifest.TestResultsPath, "CoverageSourceMapping.txt")
+    $coveragePath = [Path]::Combine($Manifest.TestResultsPath, "Integration.Coverage.cobertura.xml")
 
     $arguments = @(
-        $watchFolder
-        '--target', $pwsh
-        '--targetargs', "`"$pwshArguments`""
+        'collect'
+        $pwsh
+        $pwshArguments
         '--output', $coveragePath
-        '--format', 'cobertura'
-        '--verbosity', 'minimal'
-        if (Test-Path -LiteralPath $unitCoveragePath) {
-            '--merge-with', $unitCoveragePath
-        }
-        if ($env:GITHUB_ACTIONS -eq 'true') {
-            Set-Content -LiteralPath $sourceMappingFile "|$($Manifest.RepositoryPath)$([Path]::DirectorySeparatorChar)=/_/"
-            '--source-mapping-file', $sourceMappingFile
-        }
+        '--settings', $Manifest.TestSettingsPath
     )
     $origEnv = $env:PSModulePath
     try {
@@ -221,7 +206,11 @@ task PesterTests {
             [Path]::Combine($Manifest.OutputPath, "Modules")
         ) -join ([Path]::PathSeparator)
 
-        coverlet @arguments
+        # PowerShell will expand wildcards in a splatted argument with no
+        # way to disable it. We need to specify it as a normal argument
+        # so *.dll is passed to dotnet-coverage and not expanded by PowerShell.
+        # https://github.com/PowerShell/PowerShell/issues/24178
+        dotnet-coverage @arguments --include-files "$watchFolder/*.dll"
     }
     finally {
         $env:PSModulePath = $origEnv
@@ -239,10 +228,21 @@ task CoverageReport {
         dotnet tool install --global dotnet-reportgenerator-globaltool
     }
 
+    $mergedCoveragePath = [Path]::Combine($Manifest.TestResultsPath, "Coverage.cobertura.xml")
+    if (Test-Path -LiteralPath $mergedCoveragePath) {
+        Remove-Item $mergedCoveragePath -Force
+    }
+
+    $coverageFiles = Get-ChildItem -Path $Manifest.TestResultsPath -Filter "*.Coverage.cobertura.xml"
+    dotnet-coverage merge $coverageFiles.FullName --output $mergedCoveragePath --output-format cobertura
+    if ($LASTEXITCODE) {
+        throw "Failed to merge coverage files"
+    }
+
     $reportPath = [Path]::Combine($Manifest.TestResultsPath, "CoverageReport")
-    $coveragePath = [Path]::Combine($Manifest.TestResultsPath, "Coverage.xml")
     $reportArgs = @(
-        "-reports:$coveragePath"
+        "-reports:$mergedCoveragePath"
+        "-sourcedirs:$($Manifest.RepositoryPath)/src"
         "-targetdir:$reportPath"
         '-filefilters:-*.g.cs'  # Filter out source generated files
         '-reporttypes:Html_Dark;JsonSummary'
@@ -253,11 +253,11 @@ task CoverageReport {
     }
 
     $coverageScript = [Path]::Combine($PSScriptRoot, 'CoverageReport.ps1')
-    & $coverageScript -Path $coveragePath
+    & $coverageScript -Path $mergedCoveragePath
 }
 
 #endregion Test
 
 task Build -Jobs Clean, BuildManaged, BuildModule, BuildDocs, Sign, Package
 
-task Test -Jobs UnitTests, PesterTests, CoverageReport
+task Test -Jobs TestSetup, UnitTests, PesterTests, CoverageReport

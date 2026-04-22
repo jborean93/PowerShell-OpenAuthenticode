@@ -22,6 +22,7 @@ class Manifest {
     [string]$ReleasePath
     [string]$TestPath
     [string]$TestResultsPath
+    [string]$TestSettingsPath
 
     [string]$DotnetProject
     [Hashtable[]]$BuildRequirements
@@ -58,6 +59,7 @@ class Manifest {
         $this.ReleasePath = [Path]::Combine($this.OutputPath, $this.Module.Name, $this.Module.Version)
         $this.TestPath = [Path]::Combine($this.RepositoryPath, "tests")
         $this.TestResultsPath = [Path]::Combine($this.OutputPath, "TestResults")
+        $this.TestSettingsPath = [Path]::Combine($this.TestResultsPath, "settings.json")
 
         if (-not (Test-Path -LiteralPath $this.ReleasePath)) {
             New-Item -Path $this.ReleasePath -ItemType Directory -Force | Out-Null
