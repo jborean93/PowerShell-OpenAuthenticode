@@ -2,7 +2,7 @@ using System;
 using Azure.Core;
 using Azure.Identity;
 
-namespace OpenAuthenticode.Module;
+namespace OpenAuthenticode;
 
 public enum AzureTokenSource
 {

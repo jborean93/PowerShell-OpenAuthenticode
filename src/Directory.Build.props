@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <Nullable>enable</Nullable>
+    <UnsafeBlocks>true</UnsafeBlocks>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(GITHUB_ACTIONS)' == 'true'">

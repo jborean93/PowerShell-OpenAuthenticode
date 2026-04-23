@@ -5,7 +5,7 @@ using Azure.CodeSigning;
 using Azure.CodeSigning.Models;
 using AzureSignatureAlgorithm = Azure.CodeSigning.Models.SignatureAlgorithm;
 
-namespace OpenAuthenticode.Module;
+namespace OpenAuthenticode;
 
 public sealed class AzureTrustedSigner : KeyProvider
 {

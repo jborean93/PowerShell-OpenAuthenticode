@@ -12,7 +12,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Microsoft.PowerShell.Commands;
 
-namespace OpenAuthenticode.Module;
+namespace OpenAuthenticode;
 
 public class OpenAuthenticodeSignatureBase : AsyncPSCmdlet
 {

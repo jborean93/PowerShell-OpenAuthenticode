@@ -1,7 +1,7 @@
 using System;
 using System.Management.Automation;
 
-namespace OpenAuthenticode.Module;
+namespace OpenAuthenticode;
 
 public sealed class AzureEndpointTransformationAttribute : ArgumentTransformationAttribute
 {

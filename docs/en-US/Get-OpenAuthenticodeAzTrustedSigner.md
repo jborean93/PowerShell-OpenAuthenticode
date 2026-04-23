@@ -1,5 +1,5 @@
 ---
-external help file: OpenAuthenticode.Module.dll-Help.xml
+external help file: OpenAuthenticode.dll-Help.xml
 Module Name: OpenAuthenticode
 online version: https://www.github.com/jborean93/PowerShell-OpenAuthenticode/blob/main/docs/en-US/Get-OpenAuthenticodeAzTrustedSigner.md
 schema: 2.0.0
@@ -177,7 +177,7 @@ None
 
 ## OUTPUTS
 
-### OpenAuthenticode.Module.AzureTrustedSigner
+### OpenAuthenticode.AzureTrustedSigner
 The AzureTrustedSigner key object that can be used with the `-Key` parameter in `Set-OpenAuthenticodeSignature`.
 
 ## NOTES

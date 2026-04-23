@@ -3,7 +3,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
 
-namespace OpenAuthenticode.Module;
+namespace OpenAuthenticode;
 
 public sealed class ManagedRSAKeyProvider : KeyProvider
 {

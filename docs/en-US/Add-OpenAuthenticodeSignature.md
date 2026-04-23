@@ -1,5 +1,5 @@
 ---
-external help file: OpenAuthenticode.Module.dll-Help.xml
+external help file: OpenAuthenticode.dll-Help.xml
 Module Name: OpenAuthenticode
 online version: https://www.github.com/jborean93/PowerShell-OpenAuthenticode/blob/main/docs/en-US/Add-OpenAuthenticodeSignature.md
 schema: 2.0.0

@@ -1,5 +1,5 @@
 ---
-external help file: OpenAuthenticode.Module.dll-Help.xml
+external help file: OpenAuthenticode.dll-Help.xml
 Module Name: OpenAuthenticode
 online version:
 schema: 2.0.0

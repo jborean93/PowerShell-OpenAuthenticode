@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 using Azure.Security.KeyVault.Keys.Cryptography;
 using AzureSignatureAlgorithm = Azure.Security.KeyVault.Keys.Cryptography.SignatureAlgorithm;
 
-namespace OpenAuthenticode.Module;
+namespace OpenAuthenticode;
 
 public sealed class AzureKey : KeyProvider
 {

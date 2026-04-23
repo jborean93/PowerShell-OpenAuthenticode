@@ -7,20 +7,16 @@ using namespace System.Reflection
 
 $importModule = Get-Command -Name Import-Module -Module Microsoft.PowerShell.Core
 $moduleName = [Path]::GetFileNameWithoutExtension($PSCommandPath)
-
-
-# This is used to load the shared assembly in the Default ALC which then sets
-# an ALC for the moulde and any dependencies of that module to be loaded in
-# that ALC.
+$loaderName = "$moduleName.Loader.LoadContext"
 
 $isReload = $true
-if (-not ('OpenAuthenticode.LoadContext' -as [type])) {
+if (-not ($loaderName -as [type])) {
     $isReload = $false
 
-    Add-Type -Path ([Path]::Combine($PSScriptRoot, 'bin', 'net8.0', "$moduleName.dll"))
+    Add-Type -Path ([Path]::Combine($PSScriptRoot, 'bin', 'net8.0', "$moduleName.Loader.dll"))
 }
 
-$mainModule = [OpenAuthenticode.LoadContext]::Initialize()
+$mainModule = ($loaderName -as [type])::Initialize($moduleName)
 $innerMod = &$importModule -Assembly $mainModule -PassThru:$isReload
 
 if ($innerMod) {
@@ -30,24 +26,17 @@ if ($innerMod) {
     # https://github.com/PowerShell/PowerShell/issues/20710
     $addExportedCmdlet = [PSModuleInfo].GetMethod(
         'AddExportedCmdlet',
-        [BindingFlags]'Instance, NonPublic'
-    )
-    foreach ($cmd in $innerMod.ExportedCommands.Values) {
+        [BindingFlags]'Instance, NonPublic')
+    $addExportedAlias = [PSModuleInfo].GetMethod(
+        'AddExportedAlias',
+        [BindingFlags]'Instance, NonPublic')
+    foreach ($cmd in $innerMod.ExportedCmdlets.Values) {
         $addExportedCmdlet.Invoke($ExecutionContext.SessionState.Module, @(, $cmd))
+    }
+    foreach ($alias in $innerMod.ExportedAliases.Values) {
+        $addExportedAlias.Invoke($ExecutionContext.SessionState.Module, @(, $alias))
     }
 }
 
 Update-FormatData -AppendPath (Join-Path $PSScriptRoot "$moduleName.Format.ps1xml")
 Update-TypeData -AppendPath (Join-Path $PSScriptRoot "$moduleName.Type.ps1xml")
-
-# Use this for testing that the dlls are loaded correctly and outside the Default ALC.
-# [System.AppDomain]::CurrentDomain.GetAssemblies() |
-#     Where-Object { $_.GetName().Name -like "*openauthenticode*" } |
-#     ForEach-Object {
-#         $alc = [Runtime.Loader.AssemblyLoadContext]::GetLoadContext($_)
-#         [PSCustomObject]@{
-#             Name = $_.FullName
-#             Location = $_.Location
-#             ALC = $alc
-#         }
-#     } | Format-List
