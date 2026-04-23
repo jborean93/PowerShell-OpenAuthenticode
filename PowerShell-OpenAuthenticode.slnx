@@ -8,4 +8,5 @@
   <Folder Name="/tests/units/OpenAuthenticodeTests/">
     <Project Path="tests/units/OpenAuthenticodeTests/OpenAuthenticodeTests.csproj" />
   </Folder>
+  </Folder>
 </Solution>

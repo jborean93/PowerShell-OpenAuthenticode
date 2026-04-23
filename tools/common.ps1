@@ -8,6 +8,10 @@ using namespace System.Runtime.InteropServices
 
 #Requires -Version 7.2
 
+# Progress records are just a menace, especially in newer PowerShell versions
+# so we just disable it.
+$ProgressPreference = 'Ignore'
+
 class Manifest {
     [PSModuleInfo]$Module
 
@@ -150,7 +154,7 @@ class Manifest {
     }
 }
 
-Function Assert-ModuleFast {
+function Assert-ModuleFast {
     [CmdletBinding()]
     param(
         [Parameter()]
@@ -163,10 +167,28 @@ Function Assert-ModuleFast {
         return
     }
 
-    & ([scriptblock]::Create((Invoke-WebRequest -Uri 'bit.ly/modulefast'))) -Release $Version
+    $ProgressPreference = 'Ignore'
+
+    $attempt = 0
+    while ($true) {
+        try {
+            $code = Invoke-WebRequest -Uri 'bit.ly/modulefast'
+            break
+        }
+        catch {
+            if ($attempt -ge 2) {
+                throw "Failed to download bootstrap code for $moduleName after 3 attempts. Error: $_"
+            }
+
+            Write-Warning "Failed to download bootstrap code for $moduleName, attempt $($attempt + 1) of 3. Error: $_"
+            $attempt++
+        }
+    }
+
+    & ([scriptblock]::Create($code)) -Release $Version
 }
 
-Function Assert-PowerShell {
+function Assert-PowerShell {
     [OutputType([string])]
     [CmdletBinding()]
     param(
@@ -240,7 +262,7 @@ Function Assert-PowerShell {
     $pwshExe = [Path]::Combine($targetFolder, "pwsh$nativeExt")
 
     if (Test-Path -LiteralPath $pwshExe) {
-        return
+        return $pwshExe
     }
 
     if ($IsWindows) {
@@ -351,7 +373,7 @@ function Expand-Nupkg {
     }
 }
 
-Function Install-BuildDependencies {
+function Install-BuildDependencies {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory, ValueFromPipeline)]
