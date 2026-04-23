@@ -1,7 +1,7 @@
 using System;
 using System.Security.Cryptography;
 
-namespace OpenAuthenticode;
+namespace OpenAuthenticode.Keys;
 
 internal abstract class ECDsaPrivateKey : ECDsa
 {

@@ -1,10 +1,11 @@
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
+using OpenAuthenticode.Commands;
 using Azure.Security.KeyVault.Keys.Cryptography;
 using AzureSignatureAlgorithm = Azure.Security.KeyVault.Keys.Cryptography.SignatureAlgorithm;
 
-namespace OpenAuthenticode;
+namespace OpenAuthenticode.Keys;
 
 public sealed class AzureKey : KeyProvider
 {

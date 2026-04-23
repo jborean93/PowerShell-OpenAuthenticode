@@ -4,10 +4,10 @@ using System.Linq;
 using System.Management.Automation;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
 using System.Threading.Tasks;
+using OpenAuthenticode.Commands;
 
-namespace OpenAuthenticode;
+namespace OpenAuthenticode.Keys;
 
 /// <summary>
 /// Abstract class used to define the base definition for custom key providers

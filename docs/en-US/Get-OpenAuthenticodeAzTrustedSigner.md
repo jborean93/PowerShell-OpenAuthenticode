@@ -177,7 +177,7 @@ None
 
 ## OUTPUTS
 
-### OpenAuthenticode.AzureTrustedSigner
+### OpenAuthenticode.Keys.AzureTrustedSigner
 The AzureTrustedSigner key object that can be used with the `-Key` parameter in `Set-OpenAuthenticodeSignature`.
 
 ## NOTES

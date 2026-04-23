@@ -11,8 +11,10 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.PowerShell.Commands;
+using OpenAuthenticode.Keys;
+using OpenAuthenticode.Providers;
 
-namespace OpenAuthenticode;
+namespace OpenAuthenticode.Commands;
 
 public class OpenAuthenticodeSignatureBase : AsyncPSCmdlet
 {
