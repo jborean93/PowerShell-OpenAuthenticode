@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Formats.Asn1;
 using System.Security.Cryptography;
 
-namespace OpenAuthenticode;
+namespace OpenAuthenticode.Providers;
 
 /// <summary>
 /// Data used to identify the object being signed. This structure is signed and

@@ -137,7 +137,7 @@ None
 
 ## OUTPUTS
 
-### OpenAuthenticode.AzureKey
+### OpenAuthenticode.Keys.AzureKey
 The AzureKey object that can be used with the `-Key` parameter in `Set-OpenAuthenticodeSignature`.
 
 ## NOTES

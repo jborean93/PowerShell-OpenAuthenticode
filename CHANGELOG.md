@@ -2,6 +2,8 @@
 
 ## v0.7.0 - TBD
 
+* Internal module setup has been simplified, this should have no impact on end users but some public types may have changed namespaces which may be problematic if PowerShell was referencing those types through the `[OpenAuthenticode.*]` syntax
+
 ## v0.6.3 - 2025-09-12
 
 * Provide better when an invalid URI was specified for `Get-OpenAuthenticodeAzTrustedSigner -Endpoint`

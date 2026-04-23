@@ -6,8 +6,9 @@ using System.Threading.Tasks;
 using Azure.Core;
 using Azure.Security.KeyVault.Certificates;
 using Azure.Security.KeyVault.Keys.Cryptography;
+using OpenAuthenticode.Keys;
 
-namespace OpenAuthenticode;
+namespace OpenAuthenticode.Commands;
 
 [Cmdlet(VerbsCommon.Get, "OpenAuthenticodeAzKey")]
 [OutputType(typeof(AzureKey))]

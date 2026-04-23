@@ -5,7 +5,7 @@ using System.Reflection.PortableExecutable;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace OpenAuthenticode;
+namespace OpenAuthenticode.Providers;
 
 internal ref struct WIN_CERTIFICATE
 {

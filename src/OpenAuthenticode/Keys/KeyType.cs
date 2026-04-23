@@ -2,7 +2,7 @@ using System;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 
-namespace OpenAuthenticode;
+namespace OpenAuthenticode.Keys;
 
 public enum KeyType
 {

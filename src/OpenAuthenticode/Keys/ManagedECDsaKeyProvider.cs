@@ -2,8 +2,9 @@ using System;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
+using OpenAuthenticode.Commands;
 
-namespace OpenAuthenticode;
+namespace OpenAuthenticode.Keys;
 
 public sealed class ManagedECDsaKeyProvider : KeyProvider
 {

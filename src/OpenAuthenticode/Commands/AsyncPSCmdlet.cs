@@ -4,6 +4,8 @@ using System.Management.Automation;
 using System.Threading;
 using System.Threading.Tasks;
 
+namespace OpenAuthenticode.Commands;
+
 public abstract class AsyncPSCmdlet : PSCmdlet, IDisposable
 {
     private enum PipelineType

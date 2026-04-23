@@ -4,7 +4,7 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace OpenAuthenticode;
+namespace OpenAuthenticode.Providers;
 
 internal abstract class PowerShellProvider : IAuthenticodeProvider
 {

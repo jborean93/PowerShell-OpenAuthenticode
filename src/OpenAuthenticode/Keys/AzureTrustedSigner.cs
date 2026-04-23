@@ -3,9 +3,10 @@ using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
 using Azure.CodeSigning;
 using Azure.CodeSigning.Models;
+using OpenAuthenticode.Commands;
 using AzureSignatureAlgorithm = Azure.CodeSigning.Models.SignatureAlgorithm;
 
-namespace OpenAuthenticode;
+namespace OpenAuthenticode.Keys;
 
 public sealed class AzureTrustedSigner : KeyProvider
 {

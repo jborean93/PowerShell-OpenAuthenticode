@@ -4,7 +4,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.Pkcs;
 using System.Text;
 
-namespace OpenAuthenticode;
+namespace OpenAuthenticode.Providers;
 
 /// <summary>
 /// Authenticode provider interface.

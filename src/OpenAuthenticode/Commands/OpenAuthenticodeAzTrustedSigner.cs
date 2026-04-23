@@ -6,8 +6,9 @@ using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
 using Azure;
 using Azure.CodeSigning;
+using OpenAuthenticode.Keys;
 
-namespace OpenAuthenticode;
+namespace OpenAuthenticode.Commands;
 
 [Cmdlet(VerbsCommon.Get, "OpenAuthenticodeAzTrustedSigner")]
 [OutputType(typeof(AzureTrustedSigner))]
