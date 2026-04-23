@@ -3,7 +3,7 @@ using System.Management.Automation;
 using System.Text;
 using System.Globalization;
 
-namespace OpenAuthenticode.Module;
+namespace OpenAuthenticode;
 
 public sealed class EncodingTransformationAttribute : ArgumentTransformationAttribute
 {

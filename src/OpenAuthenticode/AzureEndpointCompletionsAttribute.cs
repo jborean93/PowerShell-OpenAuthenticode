@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Management.Automation;
 using System.Management.Automation.Language;
 
-namespace OpenAuthenticode.Module;
+namespace OpenAuthenticode;
 
 public class AzureEndpointCompletionsAttribute : IArgumentCompleter
 {

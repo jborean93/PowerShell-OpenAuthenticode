@@ -1,7 +1,7 @@
 using System;
 using System.Security.Cryptography;
 
-namespace OpenAuthenticode.Module;
+namespace OpenAuthenticode;
 
 public sealed class AzureKeyAlgorithms
 {

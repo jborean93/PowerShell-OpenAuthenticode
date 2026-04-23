@@ -7,7 +7,7 @@ using Azure.Core;
 using Azure.Security.KeyVault.Certificates;
 using Azure.Security.KeyVault.Keys.Cryptography;
 
-namespace OpenAuthenticode.Module;
+namespace OpenAuthenticode;
 
 [Cmdlet(VerbsCommon.Get, "OpenAuthenticodeAzKey")]
 [OutputType(typeof(AzureKey))]

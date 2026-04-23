@@ -1,5 +1,4 @@
 @{
-    DotnetProject = 'OpenAuthenticode.Module'
     InvokeBuildVersion = '5.14.23'
     PesterVersion = '5.7.1'
     BuildRequirements = @(

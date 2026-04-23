@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 using Azure;
 using Azure.CodeSigning;
 
-namespace OpenAuthenticode.Module;
+namespace OpenAuthenticode;
 
 [Cmdlet(VerbsCommon.Get, "OpenAuthenticodeAzTrustedSigner")]
 [OutputType(typeof(AzureTrustedSigner))]

@@ -16,7 +16,7 @@ namespace OpenAuthenticode;
 public abstract class KeyProvider : IDisposable
 {
     private readonly bool _supportsParallelSigning;
-    private readonly List<HashOperation> _operations = new();
+    private readonly List<KeyHashOperation> _operations = new();
     private bool _captureHashes = true;
 
     /// <summary>
@@ -147,7 +147,7 @@ public abstract class KeyProvider : IDisposable
     /// </remarks>
     internal virtual async Task<bool> TrySignAllAsync(
         AsyncPSCmdlet cmdlet,
-        HashOperation[] operations,
+        KeyHashOperation[] operations,
         HashAlgorithmName hashAlgorithm)
     {
         if (_supportsParallelSigning)
@@ -293,7 +293,7 @@ public abstract class KeyProvider : IDisposable
 /// </summary>
 /// <param name="Path">The path to the file being signed</param>
 /// <param name="Digest">The Authenticode digest that needs to be signed.</param>
-internal record HashOperation(
+internal record KeyHashOperation(
     string Path,
     byte[] Digest)
 {

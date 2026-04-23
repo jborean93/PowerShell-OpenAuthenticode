@@ -1,7 +1,7 @@
 <Solution>
   <Folder Name="/src/">
-    <Project Path="src/OpenAuthenticode.Module/OpenAuthenticode.Module.csproj" />
     <Project Path="src/OpenAuthenticode/OpenAuthenticode.csproj" />
+    <Project Path="src/OpenAuthenticode.Loader/OpenAuthenticode.Loader.csproj" />
   </Folder>
   <Folder Name="/tests/" />
   <Folder Name="/tests/units/">
