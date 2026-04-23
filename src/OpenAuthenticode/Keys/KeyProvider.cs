@@ -230,7 +230,7 @@ public abstract class KeyProvider : IDisposable
     /// <summary>
     /// Signs the hash of a file asynchronously.
     /// </summary>
-    /// <param name="cmdlet">The cmdlet to use for logging.</param>
+    /// <param name="pipeline">The pipeline to use for logging.</param>
     /// <param name="path">The path to the file to sign.</param>
     /// <param name="hash">The hash of the file to sign.</param>
     /// <param name="hashAlgorithm">The hash algorithm to use for the signing operation.</param>
