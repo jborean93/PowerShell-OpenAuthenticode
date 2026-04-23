@@ -460,6 +460,12 @@ try {
         "Type exit to exit prompt and cleanup test resources"
     ) -join ([Environment]::NewLine)
     Write-Host $msg -ForegroundColor Cyan
+
+    # We explicitly import PSRL so that the nested prompt has things like
+    # syntax highlighting, history, and other console features that make it
+    # easier to use.
+    Import-Module -Name PSReadLine
+
     $null = Push-Location -Path "$PSScriptRoot/.."
     try {
         $host.EnterNestedPrompt()

@@ -160,7 +160,6 @@ public abstract class KeyProvider : IDisposable
         {
             Task<byte[]>[] signTasks = [.. operations.Select(
                 i => SignHashAsync(pipeline, i.Path, i.Digest, hashAlgorithm, cancellationToken))];
-            Task<byte[][]> waitTask = Task.WhenAll(signTasks);
 
             byte[][] signed;
             try
