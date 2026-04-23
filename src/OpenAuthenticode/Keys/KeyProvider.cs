@@ -118,7 +118,7 @@ public abstract class KeyProvider : IDisposable
     /// <summary>
     /// Finalizes the hash signing operation.
     /// </summary>
-    /// <param name="cmdlet">The cmdlet to use for logging.</param>
+    /// <param name="pipeline">The pipeline to use for logging.</param>
     /// <param name="hashAlgorithm">The hash algorithm to use for the signing operation.</param>
     /// <param name="cancellationToken">The cancellation token to use for the signing operation.</param>
     /// <returns>True if the operation was successful, false otherwise.</returns>

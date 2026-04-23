@@ -139,7 +139,10 @@ public sealed class ClearOpenAuthenticodeSignature : OpenAuthenticodeSignatureBa
                 {
                     pipeline.WriteVerbose($"Removing signature on file '{path}'");
                     provider.Signature = Array.Empty<byte>();
-                    bool shouldProcess = await pipeline.ShouldProcessAsync(path, "ClearSignature").ConfigureAwait(false);
+                    bool shouldProcess = await pipeline.ShouldProcessAsync(
+                        path,
+                        "ClearSignature",
+                        cancellationToken: cancellationToken).ConfigureAwait(false);
                     if (shouldProcess)
                     {
                         provider.Save(path);
@@ -642,7 +645,7 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
                     signInfo,
                     Append);
 
-                bool shouldProcess = await pipeline.ShouldProcessAsync(operation.Path, "SetSignature").ConfigureAwait(false);
+                bool shouldProcess = await pipeline.ShouldProcessAsync(operation.Path, "SetSignature", cancellationToken).ConfigureAwait(false);
                 if (shouldProcess)
                 {
                     operation.Provider.Save(operation.Path);

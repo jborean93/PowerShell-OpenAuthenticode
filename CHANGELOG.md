@@ -3,7 +3,7 @@
 ## v0.7.0 - TBD
 
 * Updated versions of the Azure dependencies to the latest available
-* Updated internal AsyncPSCmdlet implementation to fix various bug and cancellation scenarios
+* Updated internal AsyncPSCmdlet implementation to fix various bugs and cancellation scenarios
 * Internal module setup has been simplified, this should have no impact on end users but some public types may have changed namespaces which may be problematic if PowerShell was referencing those types through the `[OpenAuthenticode.*]` syntax
 
 ## v0.6.3 - 2025-09-12

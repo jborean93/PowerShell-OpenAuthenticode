@@ -317,7 +317,7 @@ $keyParams = @{
     AccountName = 'MySigningAccount'
     ProfileName = 'MyProfile'
     Endpoint    = 'EastUS'
-    TokenSource = 'AzurePowerhell'
+    TokenSource = 'AzurePowerShell'
 }
 $key = Get-OpenAuthenticodeAzTrustedSigner @keyParams
 ```
