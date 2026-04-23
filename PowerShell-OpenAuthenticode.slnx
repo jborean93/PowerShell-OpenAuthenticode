@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/OpenAuthenticode.Module/OpenAuthenticode.Module.csproj" />
+    <Project Path="src/OpenAuthenticode/OpenAuthenticode.csproj" />
+  </Folder>
+  <Folder Name="/tests/" />
+  <Folder Name="/tests/units/">
+  <Folder Name="/tests/units/OpenAuthenticodeTests/">
+    <Project Path="tests/units/OpenAuthenticodeTests/OpenAuthenticodeTests.csproj" />
+  </Folder>
+  </Folder>
+</Solution>

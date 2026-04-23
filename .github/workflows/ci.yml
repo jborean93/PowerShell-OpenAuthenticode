@@ -86,11 +86,6 @@ jobs:
     steps:
     - uses: actions/checkout@v6
 
-    # Seems to be needed for macOS to run coverlet
-    - uses: actions/setup-dotnet@v5
-      with:
-        dotnet-version: '10.0.x'
-
     - name: Restore Built PowerShell Module
       uses: actions/download-artifact@v8
       with:
@@ -121,13 +116,13 @@ jobs:
       uses: actions/upload-artifact@v7
       with:
         name: Coverage Results (${{ matrix.info.name }})
-        path: ./output/TestResults/Coverage.xml
+        path: ./output/TestResults/Coverage.cobertura.xml
 
     - name: Upload Coverage to codecov
       if: always()
       uses: codecov/codecov-action@v6
       with:
-        files: ./output/TestResults/Coverage.xml
+        files: ./output/TestResults/Coverage.cobertura.xml
         flags: ${{ matrix.info.name }}
         token: ${{ secrets.CODECOV_TOKEN }}
 
