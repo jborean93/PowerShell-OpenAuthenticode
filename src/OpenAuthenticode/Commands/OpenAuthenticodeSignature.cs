@@ -9,6 +9,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.Pkcs;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.PowerShell.Commands;
 using OpenAuthenticode.Keys;
@@ -24,7 +25,7 @@ public class OpenAuthenticodeSignatureBase : AsyncPSCmdlet
     [Parameter()]
     public AuthenticodeProvider? Provider { get; set; }
 
-    internal (string, ProviderInfo)[] NormalizePaths()
+    internal async Task<(string, ProviderInfo)[]> NormalizePathsAsync(AsyncPipeline pipeline, CancellationToken cancellationToken)
     {
         List<(string, ProviderInfo)> result = new();
         if (_expandWildCardPaths)
@@ -39,7 +40,7 @@ public class OpenAuthenticodeSignatureBase : AsyncPSCmdlet
                 }
                 catch (ItemNotFoundException e)
                 {
-                    WriteError(new(e, "FileNotFound", ErrorCategory.ObjectNotFound, p));
+                    await pipeline.WriteErrorAsync(new(e, "FileNotFound", ErrorCategory.ObjectNotFound, p), cancellationToken: cancellationToken).ConfigureAwait(false);
                     continue;
                 }
 
@@ -110,9 +111,9 @@ public sealed class ClearOpenAuthenticodeSignature : OpenAuthenticodeSignatureBa
     [ArgumentCompletions("Utf8", "ASCII", "ANSI", "OEM", "Unicode", "Utf8Bom", "Utf8NoBom")]
     public Encoding? Encoding { get; set; }
 
-    protected override Task ProcessRecordAsync()
+    protected override async Task ProcessRecordAsync(AsyncPipeline pipeline, CancellationToken cancellationToken)
     {
-        (string, ProviderInfo)[] paths = NormalizePaths();
+        (string, ProviderInfo)[] paths = await NormalizePathsAsync(pipeline, cancellationToken).ConfigureAwait(false);
 
         foreach ((string path, ProviderInfo psProvider) in paths)
         {
@@ -131,14 +132,15 @@ public sealed class ClearOpenAuthenticodeSignature : OpenAuthenticodeSignatureBa
                     provider = ProviderFactory.Create(ext, fileData, fileEncoding: Encoding);
                 }
 
-                WriteVerbose($"Getting file '{path}' signature with provider {provider.Provider}");
+                pipeline.WriteVerbose($"Getting file '{path}' signature with provider {provider.Provider}");
                 byte[] existingSignature = provider.Signature;
 
                 if (existingSignature.Length > 0)
                 {
-                    WriteVerbose($"Removing signature on file '{path}'");
+                    pipeline.WriteVerbose($"Removing signature on file '{path}'");
                     provider.Signature = Array.Empty<byte>();
-                    if (ShouldProcess(path, "ClearSignature"))
+                    bool shouldProcess = await pipeline.ShouldProcessAsync(path, "ClearSignature").ConfigureAwait(false);
+                    if (shouldProcess)
                     {
                         provider.Save(path);
                     }
@@ -151,12 +153,10 @@ public sealed class ClearOpenAuthenticodeSignature : OpenAuthenticodeSignatureBa
                     "ClearSignatureError",
                     ErrorCategory.NotSpecified,
                     path);
-                WriteError(err);
+                await pipeline.WriteErrorAsync(err, cancellationToken: cancellationToken).ConfigureAwait(false);
                 continue;
             }
         }
-
-        return Task.CompletedTask;
     }
 }
 
@@ -228,12 +228,12 @@ public sealed class GetOpenAuthenticodeSignature : OpenAuthenticodeSignatureBase
     [Parameter()]
     public X509Certificate2Collection? TrustStore { get; set; }
 
-    protected override Task ProcessRecordAsync()
+    protected override async Task ProcessRecordAsync(AsyncPipeline pipeline, CancellationToken cancellationToken)
     {
         if (ParameterSetName == "Path" || ParameterSetName == "LiteralPath")
         {
-            ProcessPaths();
-            return Task.CompletedTask;
+            await ProcessPathsAsync(pipeline, cancellationToken).ConfigureAwait(false);
+            return;
         }
 
         AuthenticodeProvider selectedProvider = Provider ?? AuthenticodeProvider.NotSpecified;
@@ -244,8 +244,8 @@ public sealed class GetOpenAuthenticodeSignature : OpenAuthenticodeSignatureBase
                 "NoAuthenticodeProvider",
                 ErrorCategory.InvalidArgument,
                 Provider);
-            WriteError(err);
-            return Task.CompletedTask;
+            await pipeline.WriteErrorAsync(err, cancellationToken: cancellationToken).ConfigureAwait(false);
+            return;
         }
 
         if (ParameterSetName == "Content")
@@ -253,24 +253,22 @@ public sealed class GetOpenAuthenticodeSignature : OpenAuthenticodeSignatureBase
             // When using a string content the encoding doesn't matter.
             Encoding contentEncoding = new UTF8Encoding();
             byte[] rawContent = contentEncoding.GetBytes(Content);
-            ProcessContent(rawContent, selectedProvider, contentEncoding);
+            await ProcessContentAsync(pipeline, rawContent, selectedProvider, contentEncoding, cancellationToken).ConfigureAwait(false);
         }
         else
         {
-            ProcessContent(RawContent, selectedProvider, Encoding);
+            await ProcessContentAsync(pipeline, RawContent, selectedProvider, Encoding, cancellationToken).ConfigureAwait(false);
         }
-
-        return Task.CompletedTask;
     }
 
-    private void ProcessContent(byte[] data, AuthenticodeProvider selectedProvider, Encoding? dataEncoding)
+    private async Task ProcessContentAsync(AsyncPipeline pipeline, byte[] data, AuthenticodeProvider selectedProvider, Encoding? dataEncoding, CancellationToken cancellationToken)
     {
         try
         {
             IAuthenticodeProvider provider = ProviderFactory.Create(selectedProvider, data,
                 fileEncoding: dataEncoding);
 
-            WriteVerbose($"Getting content signature with provider {provider.Provider}");
+            pipeline.WriteVerbose($"Getting content signature with provider {provider.Provider}");
             SignedCms[] signedData = SignatureHelper.GetFileSignature(provider, SkipCertificateCheck,
                 TrustStore).ToArray();
 
@@ -281,11 +279,11 @@ public sealed class GetOpenAuthenticodeSignature : OpenAuthenticodeSignatureBase
                     "NoSignature",
                     ErrorCategory.ObjectNotFound,
                     null);
-                WriteError(err);
+                await pipeline.WriteErrorAsync(err, cancellationToken: cancellationToken).ConfigureAwait(false);
             }
             foreach (SignedCms cms in signedData)
             {
-                WriteObject(SignatureHelper.WrapSignedDataForPS(cms, null));
+                await pipeline.WriteObjectAsync(SignatureHelper.WrapSignedDataForPS(cms, null), cancellationToken: cancellationToken).ConfigureAwait(false);
             }
         }
         catch (Exception e)
@@ -295,14 +293,14 @@ public sealed class GetOpenAuthenticodeSignature : OpenAuthenticodeSignatureBase
                 "GetSignatureError",
                 ErrorCategory.NotSpecified,
                 null);
-            WriteError(err);
+            await pipeline.WriteErrorAsync(err, cancellationToken: cancellationToken).ConfigureAwait(false);
             return;
         }
     }
 
-    private void ProcessPaths()
+    private async Task ProcessPathsAsync(AsyncPipeline pipeline, CancellationToken cancellationToken)
     {
-        (string, ProviderInfo)[] paths = NormalizePaths();
+        (string, ProviderInfo)[] paths = await NormalizePathsAsync(pipeline, cancellationToken).ConfigureAwait(false);
 
         foreach ((string path, ProviderInfo psProvider) in paths)
         {
@@ -313,7 +311,7 @@ public sealed class GetOpenAuthenticodeSignature : OpenAuthenticodeSignatureBase
                     "PathNotFileSystem",
                     ErrorCategory.InvalidArgument,
                     path);
-                WriteError(err);
+                await pipeline.WriteErrorAsync(err, cancellationToken: cancellationToken).ConfigureAwait(false);
                 continue;
             }
             else if (!File.Exists(path))
@@ -323,7 +321,7 @@ public sealed class GetOpenAuthenticodeSignature : OpenAuthenticodeSignatureBase
                     "PathNotFound",
                     ErrorCategory.ObjectNotFound,
                     path);
-                WriteError(err);
+                await pipeline.WriteErrorAsync(err, cancellationToken: cancellationToken).ConfigureAwait(false);
                 continue;
             }
 
@@ -342,7 +340,7 @@ public sealed class GetOpenAuthenticodeSignature : OpenAuthenticodeSignatureBase
                     provider = ProviderFactory.Create(ext, fileData, fileEncoding: Encoding);
                 }
 
-                WriteVerbose($"Getting file '{path}' signature with provider {provider.Provider}");
+                pipeline.WriteVerbose($"Getting file '{path}' signature with provider {provider.Provider}");
                 SignedCms[] signedData = SignatureHelper.GetFileSignature(provider, SkipCertificateCheck, TrustStore).ToArray();
 
                 if (signedData.Length == 0)
@@ -352,11 +350,11 @@ public sealed class GetOpenAuthenticodeSignature : OpenAuthenticodeSignatureBase
                         "NoSignature",
                         ErrorCategory.ObjectNotFound,
                         path);
-                    WriteError(err);
+                    await pipeline.WriteErrorAsync(err, cancellationToken: cancellationToken).ConfigureAwait(false);
                 }
                 foreach (SignedCms info in signedData)
                 {
-                    WriteObject(SignatureHelper.WrapSignedDataForPS(info, path));
+                    await pipeline.WriteObjectAsync(SignatureHelper.WrapSignedDataForPS(info, path), cancellationToken: cancellationToken).ConfigureAwait(false);
                 }
             }
             catch (Exception e)
@@ -366,7 +364,7 @@ public sealed class GetOpenAuthenticodeSignature : OpenAuthenticodeSignatureBase
                     "GetSignatureError",
                     ErrorCategory.NotSpecified,
                     path);
-                WriteError(err);
+                await pipeline.WriteErrorAsync(err, cancellationToken: cancellationToken).ConfigureAwait(false);
                 continue;
             }
         }
@@ -513,11 +511,11 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
         }
     }
 
-    protected override async Task ProcessRecordAsync()
+    protected override async Task ProcessRecordAsync(AsyncPipeline pipeline, CancellationToken cancellationToken)
     {
         Debug.Assert(_provider is not null);
 
-        (string, ProviderInfo)[] paths = NormalizePaths();
+        (string, ProviderInfo)[] paths = await NormalizePathsAsync(pipeline, cancellationToken).ConfigureAwait(false);
 
         foreach ((string path, ProviderInfo psProvider) in paths)
         {
@@ -528,7 +526,7 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
                     "PathNotFileSystem",
                     ErrorCategory.InvalidArgument,
                     path);
-                WriteError(err);
+                await pipeline.WriteErrorAsync(err, cancellationToken: cancellationToken).ConfigureAwait(false);
                 continue;
             }
             else if (!File.Exists(path))
@@ -538,7 +536,7 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
                     "PathNotFound",
                     ErrorCategory.ObjectNotFound,
                     path);
-                WriteError(err);
+                await pipeline.WriteErrorAsync(err, cancellationToken: cancellationToken).ConfigureAwait(false);
                 continue;
             }
 
@@ -602,22 +600,23 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
                     "CalculateSignatureError",
                     ErrorCategory.NotSpecified,
                     path);
-                WriteError(err);
+                await pipeline.WriteErrorAsync(err, cancellationToken: cancellationToken).ConfigureAwait(false);
                 continue;
             }
         }
 
-        await base.ProcessRecordAsync();
+        await base.ProcessRecordAsync(pipeline, cancellationToken).ConfigureAwait(false);
     }
 
-    protected override async Task EndProcessingAsync()
+    protected override async Task EndProcessingAsync(AsyncPipeline pipeline, CancellationToken cancellationToken)
     {
         Debug.Assert(_provider is not null);
 
         // Let the key provider know that we are done with the hashing
         bool res = await _provider.FinalizeHashAsync(
-            this,
-            _hashAlgo).ConfigureAwait(false);
+            pipeline,
+            _hashAlgo,
+            cancellationToken).ConfigureAwait(false);
         if (!res)
         {
             return;
@@ -627,7 +626,7 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
         {
             try
             {
-                WriteVerbose($"Setting file '{operation.Path}' signature with provider {operation.Provider.Provider} with {_hashAlgo} and timestamp server '{TimeStampServer}'");
+                pipeline.WriteVerbose($"Setting file '{operation.Path}' signature with provider {operation.Provider.Provider} with {_hashAlgo} and timestamp server '{TimeStampServer}'");
                 SignedCms signInfo = SignatureHelper.CreateSignature(
                     operation.ContentInfo,
                     operation.SignedAttributes,
@@ -643,14 +642,15 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
                     signInfo,
                     Append);
 
-                if (ShouldProcess(operation.Path, "SetSignature"))
+                bool shouldProcess = await pipeline.ShouldProcessAsync(operation.Path, "SetSignature").ConfigureAwait(false);
+                if (shouldProcess)
                 {
                     operation.Provider.Save(operation.Path);
                 }
 
                 if (PassThru)
                 {
-                    WriteObject(SignatureHelper.WrapSignedDataForPS(signInfo, operation.Path));
+                    await pipeline.WriteObjectAsync(SignatureHelper.WrapSignedDataForPS(signInfo, operation.Path), cancellationToken: cancellationToken).ConfigureAwait(false);
                 }
             }
             catch (Exception e)
@@ -660,7 +660,7 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
                     "SetSignatureError",
                     ErrorCategory.NotSpecified,
                     operation.Path);
-                WriteError(err);
+                await pipeline.WriteErrorAsync(err, cancellationToken: cancellationToken).ConfigureAwait(false);
                 continue;
             }
         }

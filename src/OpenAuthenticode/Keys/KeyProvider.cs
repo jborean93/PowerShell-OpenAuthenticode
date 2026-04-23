@@ -4,6 +4,7 @@ using System.Linq;
 using System.Management.Automation;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Threading;
 using System.Threading.Tasks;
 using OpenAuthenticode.Commands;
 
@@ -119,41 +120,46 @@ public abstract class KeyProvider : IDisposable
     /// </summary>
     /// <param name="cmdlet">The cmdlet to use for logging.</param>
     /// <param name="hashAlgorithm">The hash algorithm to use for the signing operation.</param>
+    /// <param name="cancellationToken">The cancellation token to use for the signing operation.</param>
     /// <returns>True if the operation was successful, false otherwise.</returns>
     /// <remarks>
     /// When called, the provider will sign all the hashes that were registered.
     /// </remarks>
     internal async Task<bool> FinalizeHashAsync(
-        AsyncPSCmdlet cmdlet,
-        HashAlgorithmName hashAlgorithm)
+        AsyncPipeline pipeline,
+        HashAlgorithmName hashAlgorithm,
+        CancellationToken cancellationToken = default)
     {
         _captureHashes = false;
         return await TrySignAllAsync(
-            cmdlet,
+            pipeline,
             _operations.ToArray(),
-            hashAlgorithm).ConfigureAwait(false);
+            hashAlgorithm,
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
     /// Attempts to sign all the registered digests.
     /// </summary>
-    /// <param name="cmdlet">The cmdlet to use for logging.</param>
+    /// <param name="pipeline">The pipeline to use for logging.</param>
     /// <param name="operations">The registered digests to sign.</param>
     /// <param name="hashAlgorithm">The hash algorithm to use for the signing operation.</param>
+    /// <param name="cancellationToken">The cancellation token to use for the signing operation.</param>
     /// <returns>True if the operation was successful, false otherwise.</returns>
     /// <remarks>
     /// By default this will call SignHashAsync for each operation either in parallel or sequentially.
     /// It can be overriden to provide custom signing logic.
     /// </remarks>
     internal virtual async Task<bool> TrySignAllAsync(
-        AsyncPSCmdlet cmdlet,
+        AsyncPipeline pipeline,
         KeyHashOperation[] operations,
-        HashAlgorithmName hashAlgorithm)
+        HashAlgorithmName hashAlgorithm,
+        CancellationToken cancellationToken = default)
     {
         if (_supportsParallelSigning)
         {
             Task<byte[]>[] signTasks = [.. operations.Select(
-                i => SignHashAsync(cmdlet, i.Path, i.Digest, hashAlgorithm))];
+                i => SignHashAsync(pipeline, i.Path, i.Digest, hashAlgorithm, cancellationToken))];
             Task<byte[][]> waitTask = Task.WhenAll(signTasks);
 
             byte[][] signed;
@@ -176,7 +182,7 @@ public abstract class KeyProvider : IDisposable
                         {
                             ErrorDetails = new($"Failed to sign {operations[i].Path}: {t.Exception.InnerException!.Message}"),
                         };
-                        cmdlet.WriteError(err);
+                        await pipeline.WriteErrorAsync(err, cancellationToken: cancellationToken).ConfigureAwait(false);
                     }
                 }
 
@@ -197,10 +203,11 @@ public abstract class KeyProvider : IDisposable
                 try
                 {
                     operations[i].Signature = await SignHashAsync(
-                        cmdlet,
+                        pipeline,
                         path,
                         operations[i].Digest,
-                        hashAlgorithm).ConfigureAwait(false);
+                        hashAlgorithm,
+                        cancellationToken).ConfigureAwait(false);
                 }
                 catch (Exception e)
                 {
@@ -212,7 +219,7 @@ public abstract class KeyProvider : IDisposable
                     {
                         ErrorDetails = new($"Failed to sign {path}: {e.Message}"),
                     };
-                    cmdlet.WriteError(err);
+                    await pipeline.WriteErrorAsync(err, cancellationToken: cancellationToken).ConfigureAwait(false);
                     return false;
                 }
             }
@@ -228,12 +235,14 @@ public abstract class KeyProvider : IDisposable
     /// <param name="path">The path to the file to sign.</param>
     /// <param name="hash">The hash of the file to sign.</param>
     /// <param name="hashAlgorithm">The hash algorithm to use for the signing operation.</param>
+    /// <param name="cancellationToken">The cancellation token to use for the signing operation.</param>
     /// <returns>The signature of the hash of the file.</returns>
     internal virtual Task<byte[]> SignHashAsync(
-        AsyncPSCmdlet cmdlet,
+        AsyncPipeline pipeline,
         string path,
         byte[] hash,
-        HashAlgorithmName hashAlgorithm)
+        HashAlgorithmName hashAlgorithm,
+        CancellationToken cancellationToken = default)
     {
         throw new NotImplementedException();
     }

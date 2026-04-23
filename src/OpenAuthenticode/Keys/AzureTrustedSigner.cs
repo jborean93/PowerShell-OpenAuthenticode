@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Threading;
 using System.Threading.Tasks;
 using Azure.CodeSigning;
 using Azure.CodeSigning.Models;
@@ -34,27 +35,28 @@ public sealed class AzureTrustedSigner : KeyProvider
     }
 
     internal override async Task<byte[]> SignHashAsync(
-        AsyncPSCmdlet cmdlet,
+        AsyncPipeline pipeline,
         string path,
         byte[] hash,
-        HashAlgorithmName hashAlgorithm)
+        HashAlgorithmName hashAlgorithm,
+        CancellationToken cancellationToken)
     {
         string algorithmName = AzureKeyAlgorithms.GetAzureRsaAlgorithm(hashAlgorithm);
         SignRequest request = new(new AzureSignatureAlgorithm(algorithmName), hash);
 
-        cmdlet.WriteVerbose($"Starting Azure Trusted Signing operation for '{path}'.");
+        pipeline.WriteVerbose($"Starting Azure Trusted Signing operation for '{path}'.");
         CertificateProfileSignOperation operation = await _client.StartSignAsync(
             codeSigningAccountName: _accountName,
             certificateProfileName: _profileName,
             body: request,
             xCorrelationId: _correlationId,
-            cancellationToken: cmdlet.CancelToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        cmdlet.WriteVerbose($"Waiting for Azure Trusted Signing operation for '{path}' to complete.");
+        pipeline.WriteVerbose($"Waiting for Azure Trusted Signing operation for '{path}' to complete.");
         SignStatus response = await operation.WaitForCompletionAsync(
-            cancellationToken: cmdlet.CancelToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        cmdlet.WriteVerbose($"Azure Trusted Signing operation for '{path}' completed with status '{response.Status}'.");
+        pipeline.WriteVerbose($"Azure Trusted Signing operation for '{path}' completed with status '{response.Status}'.");
         return response.Signature;
     }
 }

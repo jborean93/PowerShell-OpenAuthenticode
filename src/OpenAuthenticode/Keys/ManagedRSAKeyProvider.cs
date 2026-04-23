@@ -1,6 +1,7 @@
 using System;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Threading;
 using System.Threading.Tasks;
 using OpenAuthenticode.Commands;
 
@@ -28,10 +29,11 @@ public sealed class ManagedRSAKeyProvider : KeyProvider
     }
 
     internal override Task<byte[]> SignHashAsync(
-        AsyncPSCmdlet cmdlet,
+        AsyncPipeline pipeline,
         string path,
         byte[] hash,
-        HashAlgorithmName hashAlgorithm)
+        HashAlgorithmName hashAlgorithm,
+        CancellationToken cancellationToken)
     {
         return Task.FromResult(_rsa.SignHash(hash, hashAlgorithm, RSASignaturePadding.Pkcs1));
     }

@@ -19,11 +19,11 @@ internal static class CertificateHelper
     /// <exception cref="ItemNotFoundException">Leaf certificate was not found.</exception>
     public static X509Certificate2 GetAzureTrustedSigningCertificate(
         X509Certificate2Collection collection,
-        AsyncPSCmdlet? cmdlet = null)
+        AsyncPipeline? pipeline = null)
     {
         foreach (X509Certificate2 cert in collection)
         {
-            cmdlet?.WriteVerbose(
+            pipeline?.WriteVerbose(
                 $"Processing Azure Trusted Signing certificate: Subject '{cert.Subject}' - Issuer '{cert.Issuer}'");
 
             foreach (X509Extension ext in cert.Extensions)
