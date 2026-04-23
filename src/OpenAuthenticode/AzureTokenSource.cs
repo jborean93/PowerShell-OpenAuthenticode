@@ -21,7 +21,7 @@ public static class TokenCredentialBuilder
         AzureTokenSource.Environment => new EnvironmentCredential(),
         AzureTokenSource.AzurePowerShell => new AzurePowerShellCredential(),
         AzureTokenSource.AzureCli => new AzureCliCredential(),
-        AzureTokenSource.ManagedIdentity => new ManagedIdentityCredential(),
+        AzureTokenSource.ManagedIdentity => new ManagedIdentityCredential(ManagedIdentityId.SystemAssigned),
         _ => throw new NotImplementedException($"Unknown AzureTokenSource {tokenSource} specified."),
     };
 }

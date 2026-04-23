@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Management.Automation;
 using System.Security.Cryptography.X509Certificates;
+using System.Threading;
 using System.Threading.Tasks;
 using Azure;
 using Azure.CodeSigning;
@@ -40,7 +41,7 @@ public sealed class GetOpenAuthenticodeAzTrustedSigner : AsyncPSCmdlet
     [Parameter()]
     public AzureTokenSource TokenSource { get; set; } = AzureTokenSource.Default;
 
-    protected override async Task ProcessRecordAsync()
+    protected override async Task ProcessRecordAsync(AsyncPipeline pipeline, CancellationToken cancellationToken)
     {
         Debug.Assert(AccountName != null);
         Debug.Assert(ProfileName != null);
@@ -56,15 +57,15 @@ public sealed class GetOpenAuthenticodeAzTrustedSigner : AsyncPSCmdlet
         byte[] rawChain;
         try
         {
-            WriteVerbose($"Getting certificate chain from Azure Code Signing service for {AccountName} {ProfileName} at {Endpoint}");
+            pipeline.WriteVerbose($"Getting certificate chain from Azure Code Signing service for {AccountName} {ProfileName} at {Endpoint}");
             Response<Stream> chainResponse = await client.GetSignCertificateChainAsync(
                 codeSigningAccountName: AccountName,
                 certificateProfileName: ProfileName,
-                cancellationToken: CancelToken).ConfigureAwait(false);
+                cancellationToken: cancellationToken).ConfigureAwait(false);
 
             rawChain = new byte[chainResponse.Value.Length];
             await chainResponse.Value.CopyToAsync(
-                new MemoryStream(rawChain)).ConfigureAwait(false);
+                new MemoryStream(rawChain), cancellationToken).ConfigureAwait(false);
         }
         catch (Exception e)
         {
@@ -73,16 +74,16 @@ public sealed class GetOpenAuthenticodeAzTrustedSigner : AsyncPSCmdlet
                 "AzTrustedSignerKeyError",
                 ErrorCategory.NotSpecified,
                 null);
-            WriteError(err);
+            await pipeline.WriteErrorAsync(err, cancellationToken: cancellationToken).ConfigureAwait(false);
             return;
         }
 
-        WriteVerbose("Importing certificate chain");
+        pipeline.WriteVerbose("Importing certificate chain");
         X509Certificate2Collection chain = [];
         chain.Import(rawChain);
 
-        X509Certificate2 cert = CertificateHelper.GetAzureTrustedSigningCertificate(chain, cmdlet: this);
-        WriteVerbose($"Creating AzureTrustedSigner object with cert '{cert.SubjectName.Name}' - {cert.Thumbprint}");
+        X509Certificate2 cert = CertificateHelper.GetAzureTrustedSigningCertificate(chain, pipeline: pipeline);
+        pipeline.WriteVerbose($"Creating AzureTrustedSigner object with cert '{cert.SubjectName.Name}' - {cert.Thumbprint}");
 
         try
         {
@@ -99,7 +100,7 @@ public sealed class GetOpenAuthenticodeAzTrustedSigner : AsyncPSCmdlet
                 "AzTrustedSigningUnknownKeyType",
                 ErrorCategory.NotSpecified,
                 null);
-            WriteError(err);
+            await pipeline.WriteErrorAsync(err, cancellationToken: cancellationToken).ConfigureAwait(false);
             return;
         }
 
@@ -109,6 +110,6 @@ public sealed class GetOpenAuthenticodeAzTrustedSigner : AsyncPSCmdlet
             AccountName,
             ProfileName,
             CorrelationId);
-        WriteObject(signerKey);
+        await pipeline.WriteObjectAsync(signerKey, cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 }

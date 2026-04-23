@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Threading;
 using System.Threading.Tasks;
 using OpenAuthenticode.Commands;
 using Azure.Security.KeyVault.Keys.Cryptography;
@@ -36,10 +37,11 @@ public sealed class AzureKey : KeyProvider
     }
 
     internal override async Task<byte[]> SignHashAsync(
-        AsyncPSCmdlet cmdlet,
+        AsyncPipeline pipeline,
         string path,
         byte[] hash,
-        HashAlgorithmName hashAlgorithm)
+        HashAlgorithmName hashAlgorithm,
+        CancellationToken cancellationToken)
     {
         if (hashAlgorithm == HashAlgorithmName.SHA1)
         {
@@ -51,13 +53,13 @@ public sealed class AzureKey : KeyProvider
         AzureSignatureAlgorithm sigAlgo = _ecdsaAlgorithm ??
             new(AzureKeyAlgorithms.GetAzureRsaAlgorithm(hashAlgorithm));
 
-        cmdlet.WriteVerbose($"Starting Azure Key Vault Signing operation for '{path}'.");
+        pipeline.WriteVerbose($"Starting Azure Key Vault Signing operation for '{path}'.");
         SignResult result = await _client.SignAsync(
             sigAlgo,
             hash,
-            cancellationToken: cmdlet.CancelToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        cmdlet.WriteVerbose($"Azure Key Vault Signing operation for '{path}'.");
+        pipeline.WriteVerbose($"Azure Key Vault Signing operation for '{path}'.");
         return result.Signature;
     }
 

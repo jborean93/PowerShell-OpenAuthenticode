@@ -2,6 +2,7 @@ using System;
 using System.Management.Automation;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Threading;
 using System.Threading.Tasks;
 using Azure.Core;
 using Azure.Security.KeyVault.Certificates;
@@ -25,7 +26,7 @@ public sealed class GetOpenAuthenticodeAzKey : AsyncPSCmdlet
     [Parameter]
     public AzureTokenSource TokenSource { get; set; } = AzureTokenSource.Default;
 
-    protected override async Task ProcessRecordAsync()
+    protected override async Task ProcessRecordAsync(AsyncPipeline pipeline, CancellationToken cancellationToken)
     {
         string keyVaultUrl = $"https://{Vault}.vault.azure.net/";
 
@@ -39,7 +40,7 @@ public sealed class GetOpenAuthenticodeAzKey : AsyncPSCmdlet
             options.Diagnostics.IsTelemetryEnabled = false;
             CertificateClient certClient = new(new Uri(keyVaultUrl), cred, options: options);
             KeyVaultCertificateWithPolicy certInfo = await certClient.GetCertificateAsync(
-                Certificate).ConfigureAwait(false);
+                Certificate, cancellationToken).ConfigureAwait(false);
 
             CryptographyClient c = new(certInfo.KeyId, cred);
             X509Certificate2 cert = new(certInfo.Cer);
@@ -66,7 +67,7 @@ public sealed class GetOpenAuthenticodeAzKey : AsyncPSCmdlet
             }
 
             AzureKey azureKey = new(c, cert, keyType, allowedAlgorithms, defaultAlgorithm, ecdsaAlgorithm);
-            WriteObject(azureKey);
+            await pipeline.WriteObjectAsync(azureKey, cancellationToken: cancellationToken).ConfigureAwait(false);
         }
         catch (Exception e)
         {
@@ -75,7 +76,7 @@ public sealed class GetOpenAuthenticodeAzKey : AsyncPSCmdlet
                 "AzKeyError",
                 ErrorCategory.NotSpecified,
                 null);
-            WriteError(err);
+            await pipeline.WriteErrorAsync(err, cancellationToken: cancellationToken).ConfigureAwait(false);
         }
     }
 }

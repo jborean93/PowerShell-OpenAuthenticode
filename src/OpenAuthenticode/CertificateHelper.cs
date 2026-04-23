@@ -14,16 +14,16 @@ internal static class CertificateHelper
     /// Azure Trusted Signing OID prefix '1.3.6.1.4.1.311.97.'.
     /// </summary>
     /// <param name="collection">The collection to search.</param>
-    /// <param name="cmdlet">The cmdlet to write verbose messages to.</param>
+    /// <param name="pipeline">The pipeline to write verbose messages to.</param>
     /// <returns>The leaf certificate to use for signing.</returns>
     /// <exception cref="ItemNotFoundException">Leaf certificate was not found.</exception>
     public static X509Certificate2 GetAzureTrustedSigningCertificate(
         X509Certificate2Collection collection,
-        AsyncPSCmdlet? cmdlet = null)
+        AsyncPipeline? pipeline = null)
     {
         foreach (X509Certificate2 cert in collection)
         {
-            cmdlet?.WriteVerbose(
+            pipeline?.WriteVerbose(
                 $"Processing Azure Trusted Signing certificate: Subject '{cert.Subject}' - Issuer '{cert.Issuer}'");
 
             foreach (X509Extension ext in cert.Extensions)

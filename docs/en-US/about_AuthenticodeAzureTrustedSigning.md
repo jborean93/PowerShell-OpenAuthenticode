@@ -158,7 +158,7 @@ $keyParams = @{
     ProfileName = 'MyProfile'
     Endpoint    = 'EastUS'
 }
-$key = Get-OpenAuthenticodeAzTrustedSigning @keyParams
+$key = Get-OpenAuthenticodeAzTrustedSigner @keyParams
 
 $signParams = @{
     Key             = $key
@@ -263,13 +263,11 @@ jobs:
         Import-Module OpenAuthenticode
 
         $keyParams = @{
-            VaultName = '${{ secrets.AZURE_VAULT_NAME }}'
-            Certificate = '${{ secrets.AZURE_VAULT_CERT_NAME }}'
             AccountName = '${{ secrets.AZURE_TS_NAME }}'
             ProfileName = '${{ secrets.AZURE_TS_PROFILE }}'
             Endpoint    = '${{ secrets.AZURE_TS_ENDPOINT }}'
         }
-        $key = Get-OpenAuthenticodeAzTrustedSigning @keyParams
+        $key = Get-OpenAuthenticodeAzTrustedSigner @keyParams
 
         $signParams = @{
             Key             = $key
@@ -299,7 +297,7 @@ $keyParams = @{
     ProfileName = 'MyProfile'
     Endpoint    = 'EastUS'
 }
-$key = Get-OpenAuthenticodeAzTrustedSigning @keyParams
+$key = Get-OpenAuthenticodeAzTrustedSigner @keyParams
 
 $signParams = @{
     Key             = $key
@@ -319,7 +317,7 @@ $keyParams = @{
     AccountName = 'MySigningAccount'
     ProfileName = 'MyProfile'
     Endpoint    = 'EastUS'
-    TokenSource = 'AzurePowerhell'
+    TokenSource = 'AzurePowerShell'
 }
-$key = Get-OpenAuthenticodeAzTrustedSigning @keyParams
+$key = Get-OpenAuthenticodeAzTrustedSigner @keyParams
 ```
