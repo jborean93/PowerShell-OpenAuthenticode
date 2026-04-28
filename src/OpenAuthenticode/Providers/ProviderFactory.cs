@@ -27,6 +27,9 @@ internal static class ProviderFactory
         RegisterProvider(AuthenticodeProvider.PowerShellXml,
             PowerShellXmlProvider.FileExtensions,
             PowerShellXmlProvider.Create);
+        RegisterProvider(AuthenticodeProvider.Appx,
+            AppxProvider.FileExtensions,
+            AppxProvider.Create);
     }
 
     /// <summary>
@@ -125,4 +128,5 @@ public enum AuthenticodeProvider
     PowerShellMof,
     PowerShellXml,
     PEBinary,
+    Appx,
 }

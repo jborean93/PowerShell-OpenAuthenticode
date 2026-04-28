@@ -42,11 +42,15 @@
 * **New `-Stream` parameter** for `Get-OpenAuthenticodeSignature`
   * Allows verification of authenticode signatures from any readable, seekable stream
   * Requires `-Provider` parameter to specify file type
+* Added APPX/MSIX authenticode provider support for Windows App Packages (.appx, .msix, .appxbundle, .msixbundle)
+  * Full implementation of all 5 digest fields (AXPC, AXCD, AXCT, AXBM, AXCI)
+  * Verified against Microsoft-signed packages
+  * Support for SHA-256, SHA-384, and SHA-512 algorithms
 
 ### Changed
 
 * Cmdlets now use file streams internally instead of loading entire files into memory
-* Improved memory efficiency when processing large files (PE binaries)
+* Improved memory efficiency when processing large files (PE binaries, APPX/MSIX packages)
 * Updated versions of the Azure dependencies to the latest available
 * Updated internal AsyncPSCmdlet implementation to fix various bugs and cancellation scenarios
 * Internal module setup has been simplified, this should have no impact on end users but some public types may have changed namespaces which may be problematic if PowerShell was referencing those types through the `[OpenAuthenticode.*]` syntax
