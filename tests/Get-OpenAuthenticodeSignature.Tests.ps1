@@ -34,18 +34,26 @@ Describe "Get-OpenAuthenticodeSignature" {
         [string]$err | Should -Be "Cannot find path '$(Join-Path $pwd.Path missing)' because it does not exist."
     }
 
-    It "Fails with -Content and no -Provider" {
-        $actual = Get-OpenAuthenticodeSignature -Content "abc" -ErrorAction SilentlyContinue -ErrorVariable err
-        $actual | Should -BeNullOrEmpty
-        $err.Count | Should -Be 1
-        [string]$err | Should -Be "A -Provider must be specified when using -Content or -RawContent"
+    It "Fails with -Stream and no -Provider" {
+        $stream = [System.IO.MemoryStream]::new([byte[]]@(0))
+        try {
+            $actual = Get-OpenAuthenticodeSignature -Stream $stream -ErrorAction SilentlyContinue -ErrorVariable err
+            $actual | Should -BeNullOrEmpty
+            $err.Count | Should -Be 1
+            [string]$err | Should -Be "A -Provider must be specified when using -Stream"
+        }
+        finally {
+            $stream.Dispose()
+        }
     }
 
-    It "Fails with -RawContent and no -Provider" {
-        $actual = Get-OpenAuthenticodeSignature -RawContent ([byte[]]@(0)) -ErrorAction SilentlyContinue -ErrorVariable err
+    It "Fails with non-readable stream" {
+        $stream = [System.IO.MemoryStream]::new()
+        $stream.Dispose()  # Make it non-readable
+        $actual = Get-OpenAuthenticodeSignature -Stream $stream -Provider PowerShell -ErrorAction SilentlyContinue -ErrorVariable err
         $actual | Should -BeNullOrEmpty
         $err.Count | Should -Be 1
-        [string]$err | Should -Be "A -Provider must be specified when using -Content or -RawContent"
+        [string]$err | Should -BeLike "*Stream must be readable*"
     }
 
     It "Fails with extension less file and no -Provider" {

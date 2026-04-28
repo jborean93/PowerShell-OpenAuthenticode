@@ -94,81 +94,69 @@ public abstract class AsyncPSCmdlet : PSCmdlet, IDisposable
         });
 
         // Consume the data intended for the PowerShell pipeline as they arrive.
-        try
+        foreach ((AsyncPipelineType pipelineType, object? data) in outPipe.GetConsumingEnumerable(PipelineStopToken))
         {
-            foreach ((AsyncPipelineType pipelineType, object? data) in outPipe.GetConsumingEnumerable(PipelineStopToken))
+            switch (pipelineType)
             {
-                switch (pipelineType)
-                {
-                    case AsyncPipelineType.Output:
-                        AsyncOutputRecord output = (AsyncOutputRecord)data!;
-                        WriteObject(output.Data, output.EnumerateCollection);
-                        output.CompletionSource?.TrySetResult();
-                        break;
+                case AsyncPipelineType.Output:
+                    AsyncOutputRecord output = (AsyncOutputRecord)data!;
+                    WriteObject(output.Data, output.EnumerateCollection);
+                    output.CompletionSource?.TrySetResult();
+                    break;
 
-                    case AsyncPipelineType.Error:
-                        AsyncErrorRecord error = (AsyncErrorRecord)data!;
-                        WriteError(error.Error);
-                        error.CompletionSource.TrySetResult();
-                        break;
+                case AsyncPipelineType.Error:
+                    AsyncErrorRecord error = (AsyncErrorRecord)data!;
+                    WriteError(error.Error);
+                    error.CompletionSource.TrySetResult();
+                    break;
 
-                    case AsyncPipelineType.Warning:
-                        WriteWarning((string)data!);
-                        break;
+                case AsyncPipelineType.Warning:
+                    WriteWarning((string)data!);
+                    break;
 
-                    case AsyncPipelineType.Verbose:
-                        WriteVerbose((string)data!);
-                        break;
+                case AsyncPipelineType.Verbose:
+                    WriteVerbose((string)data!);
+                    break;
 
-                    case AsyncPipelineType.Debug:
-                        WriteDebug((string)data!);
-                        break;
+                case AsyncPipelineType.Debug:
+                    WriteDebug((string)data!);
+                    break;
 
-                    case AsyncPipelineType.Information:
-                        WriteInformation((InformationRecord)data!);
-                        break;
+                case AsyncPipelineType.Information:
+                    WriteInformation((InformationRecord)data!);
+                    break;
 
-                    case AsyncPipelineType.Progress:
-                        WriteProgress((ProgressRecord)data!);
-                        break;
+                case AsyncPipelineType.Progress:
+                    WriteProgress((ProgressRecord)data!);
+                    break;
 
-                    case AsyncPipelineType.ShouldProcess:
-                        ShouldProcessRecord shouldProcess = (ShouldProcessRecord)data!;
-                        try
-                        {
-                            bool res = ShouldProcess(shouldProcess.Target, shouldProcess.Action);
-                            shouldProcess.CompletionSource.TrySetResult(res);
-                        }
-                        catch (Exception ex)
-                        {
-                            shouldProcess.CompletionSource.TrySetException(ex);
-                        }
-                        break;
+                case AsyncPipelineType.ShouldProcess:
+                    ShouldProcessRecord shouldProcess = (ShouldProcessRecord)data!;
+                    try
+                    {
+                        bool res = ShouldProcess(shouldProcess.Target, shouldProcess.Action);
+                        shouldProcess.CompletionSource.TrySetResult(res);
+                    }
+                    catch (Exception ex)
+                    {
+                        shouldProcess.CompletionSource.TrySetException(ex);
+                    }
+                    break;
 
-                    case AsyncPipelineType.ScriptBlock:
-                        ScriptRecord scriptRecord = (ScriptRecord)data!;
-                        InvokeScriptReturnAsIs(
-                            scriptRecord.ScriptBlock,
-                            scriptRecord.ArgumentList,
-                            scriptRecord.ReturnType,
-                            scriptRecord.CompletionSource,
-                            scriptRecord.CancellationToken);
+                case AsyncPipelineType.ScriptBlock:
+                    ScriptRecord scriptRecord = (ScriptRecord)data!;
+                    InvokeScriptReturnAsIs(
+                        scriptRecord.ScriptBlock,
+                        scriptRecord.ArgumentList,
+                        scriptRecord.ReturnType,
+                        scriptRecord.CompletionSource,
+                        scriptRecord.CancellationToken);
 
-                        break;
-                }
+                    break;
             }
         }
-        catch (OperationCanceledException)
-        {
-            // Pipeline was stopped via PipelineStopToken, exit cleanly.
-        }
-        finally
-        {
-            // Always wait for and observe the background task to avoid leaks
-            // and unobserved task exceptions. This also ensures any in-flight
-            // TaskCompletionSource waits are properly completed.
-            blockTask.GetAwaiter().GetResult();
-        }
+
+        blockTask.GetAwaiter().GetResult();
     }
 
     private static void InvokeScriptReturnAsIs(

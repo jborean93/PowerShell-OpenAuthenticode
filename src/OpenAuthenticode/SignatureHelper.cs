@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
-using System.Net.Http;
-using System.Net.Http.Headers;
 using System.Linq;
 using System.Management.Automation;
+using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Security.Cryptography.Pkcs;
 using System.Security.Cryptography.X509Certificates;
@@ -67,7 +67,9 @@ public static class SignatureHelper
             token.Timestamp.UtcDateTime);
     }
 
-    internal static IEnumerable<SignedCms> GetFileSignature(IAuthenticodeProvider provider, bool skipCertificateCheck,
+    internal static IEnumerable<SignedCms> GetFileSignature(
+        AuthenticodeProviderBase provider,
+        bool skipCertificateCheck,
         X509Certificate2Collection? trustStore)
     {
         byte[] signatureData = provider.Signature;
@@ -107,8 +109,7 @@ public static class SignatureHelper
         AsymmetricAlgorithm? privateKey,
         string? timestampServer,
         HashAlgorithmName? timestampAlgorithm,
-        bool silent
-    )
+        bool silent)
     {
         Oid digestOid = SpcIndirectData.OidFromHashAlgorithm(hashAlgorithm);
         CmsSigner signer = new(SubjectIdentifierType.IssuerAndSerialNumber, cert, privateKey)
@@ -136,10 +137,9 @@ public static class SignatureHelper
     }
 
     internal static void SetFileSignature(
-        IAuthenticodeProvider provider,
+        AuthenticodeProviderBase provider,
         SignedCms signInfo,
-        bool append
-    )
+        bool append)
     {
         if (append && provider.Signature.Length > 0)
         {
@@ -165,8 +165,11 @@ public static class SignatureHelper
         return signedPSObject;
     }
 
-    private static SignedCms DecodeCms(ReadOnlySpan<byte> data, IAuthenticodeProvider provider,
-        bool skipCertificateCheck, X509Certificate2Collection? trustStore)
+    private static SignedCms DecodeCms(
+        ReadOnlySpan<byte> data,
+        AuthenticodeProviderBase provider,
+        bool skipCertificateCheck,
+        X509Certificate2Collection? trustStore)
     {
         SignedCms signInfo = new();
         signInfo.Decode(data);
@@ -193,8 +196,11 @@ public static class SignatureHelper
         return signInfo;
     }
 
-    private static void CheckSignature(SignerInfoCollection signers, bool verifySignatureOnly,
-        CounterSignature? counterSignature, X509Certificate2Collection? trustStore)
+    private static void CheckSignature(
+        SignerInfoCollection signers,
+        bool verifySignatureOnly,
+        CounterSignature? counterSignature,
+        X509Certificate2Collection? trustStore)
     {
         if (signers.Count < 1)
         {
@@ -213,7 +219,9 @@ public static class SignatureHelper
         }
     }
 
-    private static async Task CounterSign(string timestampUrl, HashAlgorithmName algorithm,
+    private static async Task CounterSign(
+        string timestampUrl,
+        HashAlgorithmName algorithm,
         SignerInfo signerInfo)
     {
         Rfc3161TimestampRequest request = Rfc3161TimestampRequest.CreateFromSignerInfo(

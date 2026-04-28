@@ -695,46 +695,6 @@ Describe "PowerShell Authenticode" {
         }
     }
 
-    It "Signs file with explicit encoding <Encoding>" -TestCases @(
-        @{ Encoding = 'ASCII'; EncodingObject = [System.Text.Encoding]::ASCII }
-        @{ Encoding = 'BigEndianUnicode'; EncodingObject = [System.Text.UnicodeEncoding]::new($true, $true) }
-        @{ Encoding = 'ANSI'; EncodingObject = [System.Text.Encoding]::GetEncoding([CultureInfo]::CurrentCulture.TextInfo.ANSICodePage) }
-        @{ Encoding = 'BigEndianUtf32'; EncodingObject = [System.Text.UTF32Encoding]::new($true, $true) }
-        @{ Encoding = 'Unicode'; EncodingObject = [System.Text.UnicodeEncoding]::new() }
-        @{ Encoding = 'UTF8'; EncodingObject = [System.Text.UTF8Encoding]::new() }
-        @{ Encoding = 'UTF8Bom'; EncodingObject = [System.Text.UTF8Encoding]::new($true) }
-        @{ Encoding = 'UTF8NoBom'; EncodingObject = [System.Text.UTF8Encoding]::new($false) }
-        @{ Encoding = 'UTF32'; EncodingObject = [System.Text.UTF32Encoding]::new() }
-        @{ Encoding = 'windows-1252'; EncodingObject = [System.Text.Encoding]::GetEncoding('windows-1252') }
-        @{ Encoding = 65001; EncodingObject = [System.Text.UTF8Encoding]::new() }
-        @{ Encoding = [System.Text.UTF8Encoding]::new(); EncodingOBject = [System.Text.UTF8Encoding]::new() }
-    ) {
-        param($Encoding, $EncodingObject)
-
-        $scriptPath = New-Item -Path temp: -Name script.ps1 -Force
-        [System.IO.File]::WriteAllText($scriptPath.FullName, "Write-Host caf$([char]0x00E9)", $EncodingObject)
-
-        $setParams = @{
-            Path = $scriptPath
-            Certificate = $cert
-            Encoding = $Encoding
-        }
-        $res = Set-OpenAuthenticodeSignature @setParams
-        $res | Should -BeNullOrEmpty
-
-        $actual = Get-OpenAuthenticodeSignature -Path $scriptPath -Encoding $Encoding @trustParams
-        $actual | Should -BeOfType ([System.Security.Cryptography.Pkcs.SignedCms])
-        $actual.Path | Should -Be $scriptPath.FullName
-        $actual.HashAlgorithm | Should -Be SHA256
-        $actual.TimeStampInfo | Should -BeNullOrEmpty
-        $actual.Certificate.Thumbprint | Should -Be $cert.Thumbprint
-
-        If (Get-Command -Name Get-AuthenticodeSignature -ErrorAction Ignore) {
-            $actual = Get-AuthenticodeSignature -FilePath $scriptPath.FullName
-            $actual.Status | Should -Not -Be HashMismatch
-        }
-    }
-
     It "Signs file with UTF-8 with BOM encoding" {
         $scriptPath = New-Item -Path temp: -Name script.ps1 -Force
         $encoding = [System.Text.UTF8Encoding]::new($true)
@@ -835,46 +795,7 @@ Describe "PowerShell Authenticode" {
         }
     }
 
-    It "Signs file with string content" {
-        $scriptPath = New-Item -Path temp: -Name script.ps1 -Force -Value "Write-Host test`r`n"
-
-        $setParams = @{
-            Path = $scriptPath
-            Certificate = $cert
-        }
-        Set-OpenAuthenticodeSignature @setParams
-
-        $content = Get-Content $scriptPath -Raw
-        $actual = Get-OpenAuthenticodeSignature -Content $content -Provider PowerShell @trustParams
-        $actual | Should -BeOfType ([System.Security.Cryptography.Pkcs.SignedCms])
-        $actual.Path | Should -BeNullOrEmpty
-        $actual.HashAlgorithm | Should -Be SHA256
-        $actual.TimeStampInfo | Should -BeNullOrEmpty
-        $actual.Certificate.Thumbprint | Should -Be $cert.Thumbprint
-    }
-
-    It "Signs file with string content - Unicode file" {
-        $scriptPath = New-Item -Path temp: -Name script.ps1 -Force
-        $encoding = [System.Text.Encoding]::Unicode
-        [System.IO.File]::WriteAllText($scriptPath.FullName, "Write-Host test", $encoding)
-
-        $setParams = @{
-            Path = $scriptPath
-            Certificate = $cert
-        }
-        Set-OpenAuthenticodeSignature @setParams
-
-        $bom = $encoding.GetString($encoding.GetPreamble())
-        $content = $bom + (Get-Content $scriptPath -Raw)
-        $actual = Get-OpenAuthenticodeSignature -Content $content -Provider PowerShell @trustParams
-        $actual | Should -BeOfType ([System.Security.Cryptography.Pkcs.SignedCms])
-        $actual.Path | Should -BeNullOrEmpty
-        $actual.HashAlgorithm | Should -Be SHA256
-        $actual.TimeStampInfo | Should -BeNullOrEmpty
-        $actual.Certificate.Thumbprint | Should -Be $cert.Thumbprint
-    }
-
-    It "Signs file with bytes content" {
+    It "Signs file with stream content" {
         $scriptPath = New-Item -Path temp: -Name script.ps1 -Force -Value "Write-Host test`r`n"
 
         $setParams = @{
@@ -884,15 +805,21 @@ Describe "PowerShell Authenticode" {
         Set-OpenAuthenticodeSignature @setParams
 
         $content = Get-Content $scriptPath -Raw -AsByteStream
-        $actual = Get-OpenAuthenticodeSignature -RawContent $content -Provider PowerShell @trustParams
-        $actual | Should -BeOfType ([System.Security.Cryptography.Pkcs.SignedCms])
-        $actual.Path | Should -BeNullOrEmpty
-        $actual.HashAlgorithm | Should -Be SHA256
-        $actual.TimeStampInfo | Should -BeNullOrEmpty
-        $actual.Certificate.Thumbprint | Should -Be $cert.Thumbprint
+        $stream = [System.IO.MemoryStream]::new($content)
+        try {
+            $actual = Get-OpenAuthenticodeSignature -Stream $stream -Provider PowerShell @trustParams
+            $actual | Should -BeOfType ([System.Security.Cryptography.Pkcs.SignedCms])
+            $actual.Path | Should -BeNullOrEmpty
+            $actual.HashAlgorithm | Should -Be SHA256
+            $actual.TimeStampInfo | Should -BeNullOrEmpty
+            $actual.Certificate.Thumbprint | Should -Be $cert.Thumbprint
+        }
+        finally {
+            $stream.Dispose()
+        }
     }
 
-    It "Signs file with bytes content - Unicode file" {
+    It "Signs file with stream content - Unicode file" {
         $scriptPath = New-Item -Path temp: -Name script.ps1 -Force
         $encoding = [System.Text.Encoding]::Unicode
         [System.IO.File]::WriteAllText($scriptPath.FullName, "Write-Host test", $encoding)
@@ -904,11 +831,17 @@ Describe "PowerShell Authenticode" {
         Set-OpenAuthenticodeSignature @setParams
 
         $content = Get-Content $scriptPath -Raw -AsByteStream
-        $actual = Get-OpenAuthenticodeSignature -RawContent $content -Provider PowerShell @trustParams
-        $actual | Should -BeOfType ([System.Security.Cryptography.Pkcs.SignedCms])
-        $actual.Path | Should -BeNullOrEmpty
-        $actual.HashAlgorithm | Should -Be SHA256
-        $actual.TimeStampInfo | Should -BeNullOrEmpty
-        $actual.Certificate.Thumbprint | Should -Be $cert.Thumbprint
+        $stream = [System.IO.MemoryStream]::new($content)
+        try {
+            $actual = Get-OpenAuthenticodeSignature -Stream $stream -Provider PowerShell @trustParams
+            $actual | Should -BeOfType ([System.Security.Cryptography.Pkcs.SignedCms])
+            $actual.Path | Should -BeNullOrEmpty
+            $actual.HashAlgorithm | Should -Be SHA256
+            $actual.TimeStampInfo | Should -BeNullOrEmpty
+            $actual.Certificate.Thumbprint | Should -Be $cert.Thumbprint
+        }
+        finally {
+            $stream.Dispose()
+        }
     }
 }

@@ -8,17 +8,16 @@ This document goes through the basic provider interface and what providers are c
 # LONG DESCRIPTION
 Currently the following providers have been implemented in this module.
 
-|Provider|File Extensions|String Contents|
+|Provider|File Extensions|
 |-|-|-|
-|PowerShell|`.ps1`, `.psd1`, `.psm1`|Yes|
-|PowerShellMof|`.mof`|Yes|
-|PowerShellXml|`.psc1`, `.ps1xml`, `.cdxml`|Yes|
-|PEBinary|`.dll`, `.exe`|No|
+|PowerShell|`.ps1`, `.psd1`, `.psm1`|
+|PowerShellMof|`.mof`|
+|PowerShellXml|`.psc1`, `.ps1xml`, `.cdxml`|
+|PEBinary|`.dll`, `.exe`|
 
 The `Get-OpenAuthenticodeSignature`, `Set-OpenAuthenticodeSignature`, and `Add-OpenAuthenticodeSignature` uses the extension on the file path provided to determine what provider to use.
-If the file has no provider, or one of the content parameters are used, an explicit provider can be specified with `-Provider`.
+If the file has no extension, or the `-Stream` parameter is used with `Get-OpenAuthenticodeSignature`, an explicit provider must be specified with `-Provider`.
 An explicit provider can also be specified to override the extension lookup if that is desired for any reason.
-If a provider supports string contents, the `-Content` parameter can be used with `Get-OpenAuthenticodeSignature` to get a signature from a string value.
 
 Each provider provides a way to:
 
