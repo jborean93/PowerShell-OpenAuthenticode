@@ -2,6 +2,51 @@
 
 ## v0.7.0 - TBD
 
+### Breaking Changes
+
+* **Removed `-Content`, `-RawContent`, and `-Encoding` parameters** from `Get-OpenAuthenticodeSignature`
+  * Use `-Stream` parameter with a `MemoryStream` for in-memory content verification
+  * Encoding is now automatically detected for PowerShell scripts
+  * Migration examples:
+    ```powershell
+    # Old: -Content parameter
+    Get-OpenAuthenticodeSignature -Content $scriptText -Provider PowerShell
+
+    # New: Use -Stream with MemoryStream
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($scriptText)
+    $stream = [System.IO.MemoryStream]::new($bytes)
+    try {
+        Get-OpenAuthenticodeSignature -Stream $stream -Provider PowerShell
+    } finally {
+        $stream.Dispose()
+    }
+
+    # Old: -RawContent parameter
+    Get-OpenAuthenticodeSignature -RawContent $bytes -Provider PowerShell
+
+    # New: Use -Stream with MemoryStream
+    $stream = [System.IO.MemoryStream]::new($bytes)
+    try {
+        Get-OpenAuthenticodeSignature -Stream $stream -Provider PowerShell
+    } finally {
+        $stream.Dispose()
+    }
+    ```
+
+* **Removed `-Encoding` parameter** from `Set-`, `Add-`, and `Clear-OpenAuthenticodeSignature`
+  * Encoding is now automatically detected from file content (BOM or UTF-8 validation)
+  * Original file encoding is preserved when saving
+
+### Added
+
+* **New `-Stream` parameter** for `Get-OpenAuthenticodeSignature`
+  * Allows verification of authenticode signatures from any readable, seekable stream
+  * Requires `-Provider` parameter to specify file type
+
+### Changed
+
+* Cmdlets now use file streams internally instead of loading entire files into memory
+* Improved memory efficiency when processing large files (PE binaries)
 * Updated versions of the Azure dependencies to the latest available
 * Updated internal AsyncPSCmdlet implementation to fix various bugs and cancellation scenarios
 * Internal module setup has been simplified, this should have no impact on end users but some public types may have changed namespaces which may be problematic if PowerShell was referencing those types through the `[OpenAuthenticode.*]` syntax

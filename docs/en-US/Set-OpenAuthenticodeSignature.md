@@ -14,7 +14,7 @@ Set an authenticode signature on a file.
 
 ### PathCertificate (Default)
 ```
-Set-OpenAuthenticodeSignature [-Path] <String[]> -Certificate <X509Certificate2> [-Encoding <Encoding>]
+Set-OpenAuthenticodeSignature [-Path] <String[]> -Certificate <X509Certificate2>
  [-HashAlgorithm <HashAlgorithmName>] [-IncludeOption <X509IncludeOption>] [-PassThru]
  [-TimeStampHashAlgorithm <HashAlgorithmName>] [-TimeStampServer <String>] [-Silent]
  [-Provider <AuthenticodeProvider>] [-ProgressAction <ActionPreference>] [-WhatIf] [-Confirm]
@@ -23,16 +23,15 @@ Set-OpenAuthenticodeSignature [-Path] <String[]> -Certificate <X509Certificate2>
 
 ### PathKey
 ```
-Set-OpenAuthenticodeSignature [-Path] <String[]> -Key <KeyProvider> [-Encoding <Encoding>]
- [-HashAlgorithm <HashAlgorithmName>] [-IncludeOption <X509IncludeOption>] [-PassThru]
- [-TimeStampHashAlgorithm <HashAlgorithmName>] [-TimeStampServer <String>] [-Silent]
- [-Provider <AuthenticodeProvider>] [-ProgressAction <ActionPreference>] [-WhatIf] [-Confirm]
- [<CommonParameters>]
+Set-OpenAuthenticodeSignature [-Path] <String[]> -Key <KeyProvider> [-HashAlgorithm <HashAlgorithmName>]
+ [-IncludeOption <X509IncludeOption>] [-PassThru] [-TimeStampHashAlgorithm <HashAlgorithmName>]
+ [-TimeStampServer <String>] [-Silent] [-Provider <AuthenticodeProvider>] [-ProgressAction <ActionPreference>]
+ [-WhatIf] [-Confirm] [<CommonParameters>]
 ```
 
 ### LiteralPathCertificate
 ```
-Set-OpenAuthenticodeSignature -LiteralPath <String[]> -Certificate <X509Certificate2> [-Encoding <Encoding>]
+Set-OpenAuthenticodeSignature -LiteralPath <String[]> -Certificate <X509Certificate2>
  [-HashAlgorithm <HashAlgorithmName>] [-IncludeOption <X509IncludeOption>] [-PassThru]
  [-TimeStampHashAlgorithm <HashAlgorithmName>] [-TimeStampServer <String>] [-Silent]
  [-Provider <AuthenticodeProvider>] [-ProgressAction <ActionPreference>] [-WhatIf] [-Confirm]
@@ -41,11 +40,10 @@ Set-OpenAuthenticodeSignature -LiteralPath <String[]> -Certificate <X509Certific
 
 ### LiteralPathKey
 ```
-Set-OpenAuthenticodeSignature -LiteralPath <String[]> -Key <KeyProvider> [-Encoding <Encoding>]
- [-HashAlgorithm <HashAlgorithmName>] [-IncludeOption <X509IncludeOption>] [-PassThru]
- [-TimeStampHashAlgorithm <HashAlgorithmName>] [-TimeStampServer <String>] [-Silent]
- [-Provider <AuthenticodeProvider>] [-ProgressAction <ActionPreference>] [-WhatIf] [-Confirm]
- [<CommonParameters>]
+Set-OpenAuthenticodeSignature -LiteralPath <String[]> -Key <KeyProvider> [-HashAlgorithm <HashAlgorithmName>]
+ [-IncludeOption <X509IncludeOption>] [-PassThru] [-TimeStampHashAlgorithm <HashAlgorithmName>]
+ [-TimeStampServer <String>] [-Silent] [-Provider <AuthenticodeProvider>] [-ProgressAction <ActionPreference>]
+ [-WhatIf] [-Confirm] [<CommonParameters>]
 ```
 
 ## DESCRIPTION
@@ -114,37 +112,6 @@ Parameter Sets: PathCertificate, LiteralPathCertificate
 Aliases:
 
 Required: True
-Position: Named
-Default value: None
-Accept pipeline input: False
-Accept wildcard characters: False
-```
-
-### -Encoding
-A hint to provide to the Authenticode provider that indicates what the file string encoding method is.
-This is only used by Authenticode providers that need to read the file as a string, like PowerShell.
-The default used is dependent on the Authenticode provider but most commonly will be `UTF-8`.
-
-This accepts a `System.Text.Encoding` type but also a string or int representing the encoding from `[System.Text.Encoding]::GetEncoding(...)`.
-Some common encoding values are:
-
-* `Utf8` - UTF-8 but without a Byte Order Mark (BOM)
-* `ASCII` - ASCII (bytes 0-127)
-* `ANSI` - The ANSI encoding commonly used in legacy Windows encoding
-* `OEM` - The value of `[System.Text.Encoding]::Default` which is UTF-8 without a BOM
-* `Unicode` - UTF-16-LE
-* `Utf8Bom` - UTF-8 but with a BOM
-* `Utf8NoBom` - Same as `Utf8`
-
-The `ANSI` encoding typically refers to the legacy Windows encoding used in older PowerShell versions.
-If creating a script that should be used across the various PowerShell versions, it is highly recommended to use an encoding with a `BOM` like `Utf8Bom` or `Unicode`.
-
-```yaml
-Type: Encoding
-Parameter Sets: (All)
-Aliases:
-
-Required: False
 Position: Named
 Default value: None
 Accept pipeline input: False

@@ -83,7 +83,7 @@ public static class SignerInfoExtensions
                 continue;
             }
 
-            if (!(ext is X509KeyUsageExtension keyUsage))
+            if (ext is not X509KeyUsageExtension keyUsage)
             {
                 keyUsage = new X509KeyUsageExtension();
                 keyUsage.CopyFrom(ext);

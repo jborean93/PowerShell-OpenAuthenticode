@@ -1,9 +1,10 @@
 using System;
+using System.Buffers.Binary;
 using System.IO;
 using System.Linq;
 using System.Reflection.PortableExecutable;
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
-using System.Text;
 
 namespace OpenAuthenticode.Providers;
 
@@ -30,61 +31,68 @@ internal ref struct WIN_CERTIFICATE
 
     public WIN_CERTIFICATE(ReadOnlySpan<byte> data)
     {
-        Length = BitConverter.ToInt32(data);
-        Revision = BitConverter.ToInt16(data[4..]);
-        CertificateType = BitConverter.ToInt16(data[6..]);
+        Length = BinaryPrimitives.ReadInt32LittleEndian(data);
+        Revision = BinaryPrimitives.ReadInt16LittleEndian(data[4..]);
+        CertificateType = BinaryPrimitives.ReadInt16LittleEndian(data[6..]);
         Certificate = data.Slice(8, Length - 8);
     }
 }
 
-internal sealed record PEMetadata(int ChecksumOffset, int CertificateTableOffset, int CertificateOffset, int CertificateLength);
+internal sealed record PEMetadata(
+    int ChecksumOffset,
+    int CertificateTableOffset,
+    int CertificateOffset,
+    int CertificateLength,
+    int SizeOfHeaders,
+    int CertificateTableSize,
+    SectionHeader[] SectionHeaders);
 
 /// <summary>
 /// Authenticode providers for PE binary file <c>.dll></c> and <c>.exe</c>.
 /// </summary>
-internal class PEBinaryProvider : IAuthenticodeProvider
+internal class PEBinaryProvider : AuthenticodeProviderBase
 {
-    private readonly byte[] _content;
-    private readonly PEReader _reader;
-    private readonly PEHeader _header;
     private readonly PEMetadata _metadata;
 
-    public AuthenticodeProvider Provider => AuthenticodeProvider.PEBinary;
+    public override AuthenticodeProvider Provider => AuthenticodeProvider.PEBinary;
 
-    internal static string[] FileExtensions => new[] { ".dll", ".exe" };
+    internal static string[] FileExtensions => [".dll", ".exe"];
 
     /// <summary>
     /// Factory to create the PEBinaryProvider.
     /// </summary>
-    /// <param name="data">The raw script bytes to manage</param>
-    /// <param name="fileEncoding">Encoding hint of the data provided</param>
-    /// <returns>The PEBinaryProvider></returns>
-    public static PEBinaryProvider Create(byte[] data, Encoding? fileEncoding)
+    /// <param name="stream">The Stream containing PE binary data. Must be readable and seekable.
+    /// Stream position is expected to be at 0 (handled by ProviderFactory).</param>
+    /// <param name="leaveOpen">Whether to leave the Stream open when the provider is disposed</param>
+    /// <returns>The PEBinaryProvider</returns>
+    public static PEBinaryProvider Create(Stream stream, bool leaveOpen)
     {
-        using MemoryStream ms = new(data);
-        PEReader reader = new(ms, PEStreamOptions.PrefetchEntireImage);
-        PEHeader? header = reader.PEHeaders.PEHeader;
-        if (header == null)
-        {
-            throw new ArgumentException("PE data supplied is not an expected PE file");
-        }
-
+        // Stream validation and position reset handled by ProviderFactory
+        // Use LeaveOpen and PrefetchMetadata to only read metadata, not entire file
+        using PEReader reader = new(stream, PEStreamOptions.LeaveOpen | PEStreamOptions.PrefetchMetadata);
+        PEHeader header = reader.PEHeaders.PEHeader
+            ?? throw new ArgumentException("PE data supplied is not an expected PE file");
         int headerOffset = reader.PEHeaders.PEHeaderStartOffset;
         int checksumOffset = headerOffset + 64;
         int certTableOffset = headerOffset + (header.Magic == PEMagic.PE32 ? 128 : 144);
-        int certificateOffset = data.Length;
+
+        // Get Stream length for certificate offset
+        long streamLength = stream.Length;
+        int certificateOffset = (int)streamLength;
         int certificateLength = 0;
 
         DirectoryEntry certTable = header.CertificateTableDirectory;
-        byte[] signature = Array.Empty<byte>();
+        byte[] signature = [];
         if (certTable.RelativeVirtualAddress > 0 &&
             certTable.Size > 12 &&
-            (data.Length - certTable.RelativeVirtualAddress) >= certTable.Size)
+            (streamLength - certTable.RelativeVirtualAddress) >= certTable.Size)
         {
-            ReadOnlySpan<byte> certificateTable = data.AsSpan(
-                certTable.RelativeVirtualAddress,
-                certTable.Size);
-            WIN_CERTIFICATE info = new(certificateTable);
+            // Read only the certificate table data
+            stream.Position = certTable.RelativeVirtualAddress;
+            byte[] certificateTableData = new byte[certTable.Size];
+            stream.ReadExactly(certificateTableData);
+
+            WIN_CERTIFICATE info = new(certificateTableData);
             if (
                 (
                     info.Revision != WIN_CERTIFICATE.WIN_CERT_REVISION_1_0 &&
@@ -102,61 +110,62 @@ internal class PEBinaryProvider : IAuthenticodeProvider
             signature = info.Certificate.ToArray();
         }
 
+        // Extract needed metadata from PEReader before disposing
         PEMetadata extraMetadata = new(
             ChecksumOffset: checksumOffset,
             CertificateTableOffset: certTableOffset,
             CertificateOffset: certificateOffset,
-            CertificateLength: certificateLength);
-        return new PEBinaryProvider(data, signature, reader, header, extraMetadata);
+            CertificateLength: certificateLength,
+            SizeOfHeaders: header.SizeOfHeaders,
+            CertificateTableSize: certTable.Size,
+            SectionHeaders: [.. reader.PEHeaders.SectionHeaders]);
+
+        return new PEBinaryProvider(stream, leaveOpen, signature, extraMetadata);
     }
 
-    public byte[] Signature { get; set; }
-
-    private PEBinaryProvider(byte[] content, byte[] signature, PEReader peReader, PEHeader header,
-        PEMetadata certificateTable)
+    private PEBinaryProvider(Stream stream, bool leaveOpen, byte[] signature, PEMetadata metadata)
+        : base(stream, leaveOpen)
     {
         Signature = signature;
-        _content = content;
-        _reader = peReader;
-        _header = header;
-        _metadata = certificateTable;
+        _metadata = metadata;
     }
 
-    public SpcIndirectData HashData(Oid digestAlgorithm)
+    public override SpcIndirectData HashData(Oid digestAlgorithm)
     {
         byte[] fileHash;
         HashAlgorithmName algoName = HashAlgorithmName.FromOid(digestAlgorithm.Value ?? "");
         using (IncrementalHash algo = IncrementalHash.CreateHash(algoName))
         {
-            // First hash up to the checksum field and skip the checksum
-            algo.AppendData(_content, 0, _metadata.ChecksumOffset);
-            int offset = _metadata.ChecksumOffset + sizeof(uint);
+            // First hash up to the checksum field
+            HashStreamRange(algo, 0, _metadata.ChecksumOffset);
 
-            // Hash everything from the end of the checksum to the start of the Certificate Table entry.
-            algo.AppendData(_content, offset, _metadata.CertificateTableOffset - offset);
-            offset = _metadata.CertificateTableOffset + 8;
+            // Hash everything from after the checksum to the start of the Certificate Table entry
+            int length = _metadata.CertificateTableOffset - (_metadata.ChecksumOffset + sizeof(uint));
+            HashStreamRange(algo, _metadata.ChecksumOffset + sizeof(uint), length);
 
             // Hash the remaining data in the headers excluding the Certificate Table entry.
-            algo.AppendData(_content, offset, _header.SizeOfHeaders - offset);
+            int offset = _metadata.CertificateTableOffset + 8;
+            length = _metadata.SizeOfHeaders - offset;
+            HashStreamRange(algo, offset, length);
 
             // Process each section where the SizeOfRawData is greater than 1 and order by the data offset.
-            int sumOfBytesHashed = _header.SizeOfHeaders;
-            foreach (SectionHeader section in _reader.PEHeaders.SectionHeaders
+            int sumOfBytesHashed = _metadata.SizeOfHeaders;
+            foreach (SectionHeader section in _metadata.SectionHeaders
                 .Where(h => h.SizeOfRawData > 0)
                 .OrderBy(h => h.PointerToRawData))
             {
-                algo.AppendData(_content, section.PointerToRawData, section.SizeOfRawData);
+                HashStreamRange(algo, section.PointerToRawData, section.SizeOfRawData);
                 sumOfBytesHashed += section.SizeOfRawData;
             }
 
             // Hash the remaining data beyond the Attribute Certificate Table
-            int remainingLength = _content.Length - ((_header.CertificateTableDirectory.Size) + sumOfBytesHashed);
+            int remainingLength = (int)Stream.Length - (_metadata.CertificateTableSize + sumOfBytesHashed);
             if (remainingLength > 0)
             {
-                algo.AppendData(_content, sumOfBytesHashed, remainingLength);
+                HashStreamRange(algo, sumOfBytesHashed, remainingLength);
             }
 
-            // If the file hasn't been singed yet, check to see if padding will
+            // If the file hasn't been signed yet, check to see if padding will
             // be needed on the final file and include it in the hash.
             int paddingLength = (8 - ((sumOfBytesHashed + remainingLength) & 7)) & 7;
             if (_metadata.CertificateLength == 0 && paddingLength > 0)
@@ -177,62 +186,67 @@ internal class PEBinaryProvider : IAuthenticodeProvider
             Data: imageData.GetBytes(),
             DigestAlgorithm: digestAlgorithm,
             DigestParameters: null,
-            Digest: fileHash
-        );
+            Digest: fileHash);
     }
 
-    public AsnEncodedData[] GetAttributesToSign()
+    public override AsnEncodedData[] GetAttributesToSign()
     {
         SpcSpOpusInfo opusInfo = new(new SpcString(Unicode: ""), new SpcLink(Url: ""));
-        SpcStatementType statementType = new(new[]
-        {
+        SpcStatementType statementType = new([
             new Oid("1.3.6.1.4.1.311.2.1.21", "SPC_INDIVIDUAL_SP_KEY_PURPOSE_OBJID"),
-        });
+        ]);
 
-        return new[]
-        {
+        return [
             new AsnEncodedData(SpcSpOpusInfo.OID, opusInfo.GetBytes()),
             new AsnEncodedData(SpcStatementType.OID, statementType.GetBytes())
-        };
+        ];
     }
 
-    public void Save(string path)
+    [SkipLocalsInit]
+    public override void Save()
     {
-        using FileStream fs = File.OpenWrite(path);
-        fs.SetLength(_metadata.CertificateOffset);
+        Stream.SetLength(_metadata.CertificateOffset);
 
-        // Ensure we clear out the existing signature by trimming the end of
-        // the file.
-        fs.Seek(_metadata.CertificateTableOffset, SeekOrigin.Begin);
+        Span<byte> buffer = stackalloc byte[8];
+        buffer.Clear();
 
         if (Signature.Length == 0)
         {
-            fs.Write(new byte[8]);
+            Stream.Seek(_metadata.CertificateTableOffset, SeekOrigin.Begin);
+            Stream.Write(buffer);
         }
         else
         {
-            // Ensure the PE binary is padded to a quadword offset before
-            // adding the certificate info.
-            int padding = (8 - ((int)fs.Length & 7)) & 7;
-            int signaturePadding = (8 - ((int)Signature.Length & 7)) & 7;
+            // Calculate padding to align to 8-byte boundary
+            int padding = (8 - (_metadata.CertificateOffset & 7)) & 7;
+            int signaturePadding = (8 - (Signature.Length & 7)) & 7;
 
-            fs.Write(BitConverter.GetBytes((int)fs.Length + padding));
-            fs.Write(BitConverter.GetBytes(Signature.Length + signaturePadding + 8));
-
-            fs.Seek(0, SeekOrigin.End);
+            // Write padding at end if needed
+            Stream.Seek(0, SeekOrigin.End);
             if (padding > 0)
             {
-                fs.Write(new byte[padding]);
+                Stream.Write(buffer[..padding]);
             }
 
-            fs.Write(BitConverter.GetBytes(Signature.Length + signaturePadding + 8));
-            fs.Write(BitConverter.GetBytes((short)WIN_CERTIFICATE.WIN_CERT_REVISION_2_0));
-            fs.Write(BitConverter.GetBytes((short)WIN_CERTIFICATE.WIN_CERT_TYPE_PKCS_SIGNED_DATA));
-            fs.Write(Signature);
+            // Write WIN_CERTIFICATE structure
+            BinaryPrimitives.WriteInt32LittleEndian(buffer[..4], Signature.Length + signaturePadding + 8);
+            BinaryPrimitives.WriteInt16LittleEndian(buffer[4..6], WIN_CERTIFICATE.WIN_CERT_REVISION_2_0);
+            BinaryPrimitives.WriteInt16LittleEndian(buffer[6..8], WIN_CERTIFICATE.WIN_CERT_TYPE_PKCS_SIGNED_DATA);
+            Stream.Write(buffer);
+            Stream.Write(Signature);
+
             if (signaturePadding > 0)
             {
-                fs.Write(new byte[signaturePadding]);
+                Span<byte> paddingBuffer = buffer[..signaturePadding];
+                paddingBuffer.Clear();
+                Stream.Write(paddingBuffer);
             }
+
+            // Update certificate table entry at the specified offset
+            Stream.Seek(_metadata.CertificateTableOffset, SeekOrigin.Begin);
+            BinaryPrimitives.WriteInt32LittleEndian(buffer[..4], _metadata.CertificateOffset + padding);
+            BinaryPrimitives.WriteInt32LittleEndian(buffer[4..8], Signature.Length + signaturePadding + 8);
+            Stream.Write(buffer);
         }
     }
 }

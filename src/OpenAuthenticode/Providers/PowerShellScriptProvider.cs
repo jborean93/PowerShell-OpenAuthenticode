@@ -6,7 +6,7 @@ using System.Text;
 
 namespace OpenAuthenticode.Providers;
 
-internal abstract class PowerShellProvider : IAuthenticodeProvider
+internal abstract class PowerShellProvider : AuthenticodeProviderBase
 {
     private readonly Guid _pwshSip = new("603bcc1f-4b59-4e08-b724-d2c6297ef351");
     protected const string _startSig = "SIG # Begin signature block";
@@ -15,20 +15,30 @@ internal abstract class PowerShellProvider : IAuthenticodeProvider
     private byte[] _content;
     private Encoding _fileEncoding;
 
-    public byte[] Signature { get; set; }
-
     protected abstract string StartComment { get; }
 
     protected abstract string EndComment { get; }
 
-    public abstract AuthenticodeProvider Provider { get; }
+    public override abstract AuthenticodeProvider Provider { get; }
 
-    protected PowerShellProvider(byte[] data, Encoding fileEncoding)
+    protected PowerShellProvider(Stream stream, bool leaveOpen)
+        : base(stream, leaveOpen)
     {
+        // Stream validation and position reset handled by ProviderFactory
+        // Read stream into byte array once
+        byte[] data = new byte[stream.Length];
+        using (MemoryStream ms = new(data, writable: true))
+        {
+            stream.CopyTo(ms);
+        }
+
+        // Auto-detect encoding
+        _fileEncoding = GetScriptEncoding(data);
+
         // We need to use GetString as StreamReader will remove the BOM if
         // present. GetString preserves the BOM in the string which is
         // important as it's part of the data to be hashed.
-        string scriptText = fileEncoding.GetString(data);
+        string scriptText = _fileEncoding.GetString(data);
         ReadOnlySpan<char> scriptData = new(scriptText.ToCharArray());
 
         string startSig = $"{StartComment}{_startSig}{EndComment}";
@@ -37,7 +47,7 @@ internal abstract class PowerShellProvider : IAuthenticodeProvider
         int signatureIdx = scriptData.IndexOf(new ReadOnlySpan<char>($"\r\n{startSig}".ToCharArray()));
 
         byte[] hashableData;
-        Signature = Array.Empty<byte>();
+        Signature = [];
         if (signatureIdx != -1)
         {
             ReadOnlySpan<char> scriptContents = scriptData[..signatureIdx];
@@ -65,11 +75,11 @@ internal abstract class PowerShellProvider : IAuthenticodeProvider
         }
 
         _content = hashableData;
-        _fileEncoding = fileEncoding;
     }
 
-    public SpcIndirectData HashData(Oid digestAlgorithm)
+    public override SpcIndirectData HashData(Oid digestAlgorithm)
     {
+        // PowerShell provider already parsed and stored the content to hash in _content
         byte[] fileHash;
         HashAlgorithmName algoName = HashAlgorithmName.FromOid(digestAlgorithm.Value ?? "");
         using (IncrementalHash algo = IncrementalHash.CreateHash(algoName))
@@ -87,24 +97,26 @@ internal abstract class PowerShellProvider : IAuthenticodeProvider
         );
     }
 
-    public AsnEncodedData[] GetAttributesToSign()
+    public override AsnEncodedData[] GetAttributesToSign()
     {
         SpcSpOpusInfo opusInfo = new(null, null);
-        SpcStatementType statementType = new(new[]
-        {
+        SpcStatementType statementType = new([
             new Oid("1.3.6.1.4.1.311.2.1.21", "SPC_INDIVIDUAL_SP_KEY_PURPOSE_OBJID"),
-        });
+        ]);
 
-        return new[]
-        {
+        return [
             new AsnEncodedData(SpcSpOpusInfo.OID, opusInfo.GetBytes()),
             new AsnEncodedData(SpcStatementType.OID, statementType.GetBytes())
-        };
+        ];
     }
 
-    public void Save(string path)
+    public override void Save()
     {
-        string content = Encoding.Unicode.GetString(_content); ;
+        // Stream validation happens in ProviderFactory or cmdlet
+        Stream.SetLength(0);
+        Stream.Position = 0;
+
+        string content = Encoding.Unicode.GetString(_content);
         if (Signature.Length > 0)
         {
             StringBuilder signatureContent = new();
@@ -124,7 +136,9 @@ internal abstract class PowerShellProvider : IAuthenticodeProvider
 
         // The content already contains the original BOM chars so ensure that
         // the _fileEncoding doesn't add another one breaking the signature.
-        File.WriteAllText(path, content, new BOMLessEncoding(_fileEncoding));
+        using StreamWriter writer = new(Stream, new BOMLessEncoding(_fileEncoding), leaveOpen: true);
+        writer.Write(content);
+        writer.Flush();
     }
 
     internal static Encoding GetScriptEncoding(ReadOnlySpan<byte> data)
@@ -232,7 +246,7 @@ internal abstract class PowerShellProvider : IAuthenticodeProvider
             return false;
         }
 
-        string[] validEndlineCandidates = new[] { "\r", "\n", "\r\n", "\n\r", "\r\r", "\n\n" };
+        string[] validEndlineCandidates = ["\r", "\n", "\r\n", "\n\r", "\r\r", "\n\n"];
         string remaining = block.Slice(endIdx + endBlockLength + 2).ToString();
         return Array.Exists(validEndlineCandidates, c => c == remaining);
     }
@@ -246,16 +260,17 @@ internal class PowerShellScriptProvider : PowerShellProvider
 {
     public override AuthenticodeProvider Provider => AuthenticodeProvider.PowerShell;
 
-    internal static string[] FileExtensions => new[] { ".ps1", ".psd1", ".psm1" };
+    internal static string[] FileExtensions => [".ps1", ".psd1", ".psm1"];
 
     protected override string StartComment => "# ";
 
     protected override string EndComment => "";
 
-    public static PowerShellScriptProvider Create(byte[] data, Encoding? fileEncoding)
-        => new PowerShellScriptProvider(data, fileEncoding ?? GetScriptEncoding(data));
+    public static PowerShellScriptProvider Create(Stream stream, bool leaveOpen)
+        => new PowerShellScriptProvider(stream, leaveOpen);
 
-    private PowerShellScriptProvider(byte[] data, Encoding fileEncoding) : base(data, fileEncoding)
+    private PowerShellScriptProvider(Stream stream, bool leaveOpen)
+        : base(stream, leaveOpen)
     { }
 }
 
@@ -267,16 +282,17 @@ internal class PowerShellMofProvider : PowerShellProvider
 {
     public override AuthenticodeProvider Provider => AuthenticodeProvider.PowerShellMof;
 
-    internal static string[] FileExtensions => new[] { ".mof" };
+    internal static string[] FileExtensions => [".mof"];
 
     protected override string StartComment => "/* ";
 
     protected override string EndComment => " */";
 
-    public static PowerShellMofProvider Create(byte[] data, Encoding? fileEncoding)
-        => new PowerShellMofProvider(data, fileEncoding ?? GetScriptEncoding(data));
+    public static PowerShellMofProvider Create(Stream stream, bool leaveOpen)
+        => new PowerShellMofProvider(stream, leaveOpen);
 
-    private PowerShellMofProvider(byte[] data, Encoding fileEncoding) : base(data, fileEncoding)
+    private PowerShellMofProvider(Stream stream, bool leaveOpen)
+        : base(stream, leaveOpen)
     { }
 }
 
@@ -288,16 +304,17 @@ internal class PowerShellXmlProvider : PowerShellProvider
 {
     public override AuthenticodeProvider Provider => AuthenticodeProvider.PowerShellXml;
 
-    internal static string[] FileExtensions => new[] { ".psc1", ".ps1xml", ".cdxml" };
+    internal static string[] FileExtensions => [".psc1", ".ps1xml", ".cdxml"];
 
     protected override string StartComment => "<!-- ";
 
     protected override string EndComment => " -->";
 
-    public static PowerShellXmlProvider Create(byte[] data, Encoding? fileEncoding)
-        => new PowerShellXmlProvider(data, fileEncoding ?? GetScriptEncoding(data));
+    public static PowerShellXmlProvider Create(Stream stream, bool leaveOpen)
+        => new PowerShellXmlProvider(stream, leaveOpen);
 
-    private PowerShellXmlProvider(byte[] data, Encoding fileEncoding) : base(data, fileEncoding)
+    private PowerShellXmlProvider(Stream stream, bool leaveOpen)
+        : base(stream, leaveOpen)
     { }
 }
 
@@ -310,7 +327,7 @@ public class BOMLessEncoding : Encoding
         _encoding = encoding;
     }
 
-    public override byte[] GetPreamble() => Array.Empty<byte>();
+    public override byte[] GetPreamble() => [];
 
     public override int GetByteCount(char[] chars, int index, int count)
         => _encoding.GetByteCount(chars, index, count);

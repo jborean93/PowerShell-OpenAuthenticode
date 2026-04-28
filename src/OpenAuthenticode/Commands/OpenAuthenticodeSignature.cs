@@ -8,7 +8,6 @@ using System.Management.Automation;
 using System.Security.Cryptography;
 using System.Security.Cryptography.Pkcs;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.PowerShell.Commands;
@@ -19,13 +18,15 @@ namespace OpenAuthenticode.Commands;
 
 public class OpenAuthenticodeSignatureBase : AsyncPSCmdlet
 {
-    internal string[] _paths = Array.Empty<string>();
+    internal string[] _paths = [];
     internal bool _expandWildCardPaths = false;
 
     [Parameter()]
     public AuthenticodeProvider? Provider { get; set; }
 
-    internal async Task<(string, ProviderInfo)[]> NormalizePathsAsync(AsyncPipeline pipeline, CancellationToken cancellationToken)
+    internal async Task<(string, ProviderInfo)[]> NormalizePathsAsync(
+        AsyncPipeline pipeline,
+        CancellationToken cancellationToken)
     {
         List<(string, ProviderInfo)> result = new();
         if (_expandWildCardPaths)
@@ -40,7 +41,9 @@ public class OpenAuthenticodeSignatureBase : AsyncPSCmdlet
                 }
                 catch (ItemNotFoundException e)
                 {
-                    await pipeline.WriteErrorAsync(new(e, "FileNotFound", ErrorCategory.ObjectNotFound, p), cancellationToken: cancellationToken).ConfigureAwait(false);
+                    await pipeline.WriteErrorAsync(
+                        new(e, "FileNotFound", ErrorCategory.ObjectNotFound, p),
+                        cancellationToken: cancellationToken).ConfigureAwait(false);
                     continue;
                 }
 
@@ -60,7 +63,7 @@ public class OpenAuthenticodeSignatureBase : AsyncPSCmdlet
             }
         }
 
-        return result.ToArray();
+        return [..result];
     }
 }
 
@@ -106,11 +109,6 @@ public sealed class ClearOpenAuthenticodeSignature : OpenAuthenticodeSignatureBa
         }
     }
 
-    [Parameter()]
-    [EncodingTransformation]
-    [ArgumentCompletions("Utf8", "ASCII", "ANSI", "OEM", "Unicode", "Utf8Bom", "Utf8NoBom")]
-    public Encoding? Encoding { get; set; }
-
     protected override async Task ProcessRecordAsync(AsyncPipeline pipeline, CancellationToken cancellationToken)
     {
         (string, ProviderInfo)[] paths = await NormalizePathsAsync(pipeline, cancellationToken).ConfigureAwait(false);
@@ -119,33 +117,35 @@ public sealed class ClearOpenAuthenticodeSignature : OpenAuthenticodeSignatureBa
         {
             try
             {
-                byte[] fileData = File.ReadAllBytes(path);
-                IAuthenticodeProvider provider;
+                using FileStream fileStream = File.Open(path, FileMode.Open, FileAccess.ReadWrite);
+                AuthenticodeProviderBase provider;
                 if (Provider != null && Provider != AuthenticodeProvider.NotSpecified)
                 {
-                    provider = ProviderFactory.Create((AuthenticodeProvider)Provider, fileData,
-                        fileEncoding: Encoding);
+                    provider = ProviderFactory.Create(Provider.Value, fileStream, requireWrite: true);
                 }
                 else
                 {
                     string ext = System.IO.Path.GetExtension(path);
-                    provider = ProviderFactory.Create(ext, fileData, fileEncoding: Encoding);
+                    provider = ProviderFactory.Create(ext, fileStream, requireWrite: true);
                 }
 
-                pipeline.WriteVerbose($"Getting file '{path}' signature with provider {provider.Provider}");
-                byte[] existingSignature = provider.Signature;
-
-                if (existingSignature.Length > 0)
+                using (provider)
                 {
-                    pipeline.WriteVerbose($"Removing signature on file '{path}'");
-                    provider.Signature = Array.Empty<byte>();
-                    bool shouldProcess = await pipeline.ShouldProcessAsync(
-                        path,
-                        "ClearSignature",
-                        cancellationToken: cancellationToken).ConfigureAwait(false);
-                    if (shouldProcess)
+                    pipeline.WriteVerbose($"Getting file '{path}' signature with provider {provider.Provider}");
+                    byte[] existingSignature = provider.Signature;
+
+                    if (existingSignature.Length > 0)
                     {
-                        provider.Save(path);
+                        pipeline.WriteVerbose($"Removing signature on file '{path}'");
+                        provider.Signature = [];
+                        bool shouldProcess = await pipeline.ShouldProcessAsync(
+                            path,
+                            "ClearSignature",
+                            cancellationToken: cancellationToken).ConfigureAwait(false);
+                        if (shouldProcess)
+                        {
+                            provider.Save();
+                        }
                     }
                 }
             }
@@ -206,24 +206,12 @@ public sealed class GetOpenAuthenticodeSignature : OpenAuthenticodeSignatureBase
 
     [Parameter(
         Mandatory = true,
+        ValueFromPipeline = true,
         ValueFromPipelineByPropertyName = true,
-        ParameterSetName = "Content"
+        ParameterSetName = "Stream"
     )]
-    public string Content { get; set; } = "";
-
-    [Parameter(
-        Mandatory = true,
-        ValueFromPipelineByPropertyName = true,
-        ParameterSetName = "RawContent"
-    )]
-    public byte[] RawContent { get; set; } = Array.Empty<byte>();
-
-    [Parameter(ParameterSetName = "Path")]
-    [Parameter(ParameterSetName = "LiteralPath")]
-    [Parameter(ParameterSetName = "RawContent")]
-    [EncodingTransformation]
-    [ArgumentCompletions("Utf8", "ASCII", "ANSI", "OEM", "Unicode", "Utf8Bom", "Utf8NoBom")]
-    public Encoding? Encoding { get; set; }
+    [ValidateNotNull]
+    public Stream? Stream { get; set; }
 
     [Parameter()]
     public SwitchParameter SkipCertificateCheck { get; set; }
@@ -233,17 +221,25 @@ public sealed class GetOpenAuthenticodeSignature : OpenAuthenticodeSignatureBase
 
     protected override async Task ProcessRecordAsync(AsyncPipeline pipeline, CancellationToken cancellationToken)
     {
-        if (ParameterSetName == "Path" || ParameterSetName == "LiteralPath")
+        if (ParameterSetName == "Stream")
+        {
+            await ProcessStreamAsync(pipeline, cancellationToken).ConfigureAwait(false);
+        }
+        else
         {
             await ProcessPathsAsync(pipeline, cancellationToken).ConfigureAwait(false);
-            return;
         }
+    }
+
+    private async Task ProcessStreamAsync(AsyncPipeline pipeline, CancellationToken cancellationToken)
+    {
+        Debug.Assert(Stream != null);
 
         AuthenticodeProvider selectedProvider = Provider ?? AuthenticodeProvider.NotSpecified;
         if (selectedProvider == AuthenticodeProvider.NotSpecified)
         {
             ErrorRecord err = new(
-                new ArgumentException("A -Provider must be specified when using -Content or -RawContent"),
+                new ArgumentException("A -Provider must be specified when using -Stream"),
                 "NoAuthenticodeProvider",
                 ErrorCategory.InvalidArgument,
                 Provider);
@@ -251,34 +247,23 @@ public sealed class GetOpenAuthenticodeSignature : OpenAuthenticodeSignatureBase
             return;
         }
 
-        if (ParameterSetName == "Content")
-        {
-            // When using a string content the encoding doesn't matter.
-            Encoding contentEncoding = new UTF8Encoding();
-            byte[] rawContent = contentEncoding.GetBytes(Content);
-            await ProcessContentAsync(pipeline, rawContent, selectedProvider, contentEncoding, cancellationToken).ConfigureAwait(false);
-        }
-        else
-        {
-            await ProcessContentAsync(pipeline, RawContent, selectedProvider, Encoding, cancellationToken).ConfigureAwait(false);
-        }
-    }
-
-    private async Task ProcessContentAsync(AsyncPipeline pipeline, byte[] data, AuthenticodeProvider selectedProvider, Encoding? dataEncoding, CancellationToken cancellationToken)
-    {
         try
         {
-            IAuthenticodeProvider provider = ProviderFactory.Create(selectedProvider, data,
-                fileEncoding: dataEncoding);
+            // ProviderFactory.Create validates stream capabilities
+            // leaveOpen=true since user provided the stream
+            using AuthenticodeProviderBase provider = ProviderFactory.Create(
+                selectedProvider,
+                Stream,
+                leaveOpen: true);
 
-            pipeline.WriteVerbose($"Getting content signature with provider {provider.Provider}");
+            pipeline.WriteVerbose($"Getting stream signature with provider {provider.Provider}");
             SignedCms[] signedData = SignatureHelper.GetFileSignature(provider, SkipCertificateCheck,
                 TrustStore).ToArray();
 
             if (signedData.Length == 0)
             {
                 ErrorRecord err = new(
-                    new ItemNotFoundException("Content provided does not contain an authenticode signature"),
+                    new ItemNotFoundException("Stream does not contain an authenticode signature"),
                     "NoSignature",
                     ErrorCategory.ObjectNotFound,
                     null);
@@ -289,15 +274,16 @@ public sealed class GetOpenAuthenticodeSignature : OpenAuthenticodeSignatureBase
                 await pipeline.WriteObjectAsync(SignatureHelper.WrapSignedDataForPS(cms, null), cancellationToken: cancellationToken).ConfigureAwait(false);
             }
         }
+        catch (ArgumentException e) when (e.ParamName == "stream")
+        {
+            // Stream validation errors from ProviderFactory
+            ErrorRecord err = new(e, "InvalidStream", ErrorCategory.InvalidArgument, Stream);
+            await pipeline.WriteErrorAsync(err, cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
         catch (Exception e)
         {
-            ErrorRecord err = new(
-                e,
-                "GetSignatureError",
-                ErrorCategory.NotSpecified,
-                null);
+            ErrorRecord err = new(e, "GetSignatureError", ErrorCategory.NotSpecified, null);
             await pipeline.WriteErrorAsync(err, cancellationToken: cancellationToken).ConfigureAwait(false);
-            return;
         }
     }
 
@@ -330,34 +316,41 @@ public sealed class GetOpenAuthenticodeSignature : OpenAuthenticodeSignatureBase
 
             try
             {
-                byte[] fileData = File.ReadAllBytes(path);
-                IAuthenticodeProvider provider;
+                using FileStream fileStream = File.OpenRead(path);
+                AuthenticodeProviderBase provider;
                 if (Provider != null && Provider != AuthenticodeProvider.NotSpecified)
                 {
-                    provider = ProviderFactory.Create((AuthenticodeProvider)Provider, fileData,
-                        fileEncoding: Encoding);
+                    provider = ProviderFactory.Create(Provider.Value, fileStream);
                 }
                 else
                 {
                     string ext = System.IO.Path.GetExtension(path);
-                    provider = ProviderFactory.Create(ext, fileData, fileEncoding: Encoding);
+                    provider = ProviderFactory.Create(ext, fileStream);
                 }
 
-                pipeline.WriteVerbose($"Getting file '{path}' signature with provider {provider.Provider}");
-                SignedCms[] signedData = SignatureHelper.GetFileSignature(provider, SkipCertificateCheck, TrustStore).ToArray();
+                using (provider)
+                {
+                    pipeline.WriteVerbose($"Getting file '{path}' signature with provider {provider.Provider}");
+                    SignedCms[] signedData = SignatureHelper.GetFileSignature(
+                        provider,
+                        SkipCertificateCheck,
+                        TrustStore).ToArray();
 
-                if (signedData.Length == 0)
-                {
-                    ErrorRecord err = new(
-                        new ItemNotFoundException($"File '{path}' does not contain an authenticode signature"),
-                        "NoSignature",
-                        ErrorCategory.ObjectNotFound,
-                        path);
-                    await pipeline.WriteErrorAsync(err, cancellationToken: cancellationToken).ConfigureAwait(false);
-                }
-                foreach (SignedCms info in signedData)
-                {
-                    await pipeline.WriteObjectAsync(SignatureHelper.WrapSignedDataForPS(info, path), cancellationToken: cancellationToken).ConfigureAwait(false);
+                    if (signedData.Length == 0)
+                    {
+                        ErrorRecord err = new(
+                            new ItemNotFoundException($"File '{path}' does not contain an authenticode signature"),
+                            "NoSignature",
+                            ErrorCategory.ObjectNotFound,
+                            path);
+                        await pipeline.WriteErrorAsync(err, cancellationToken: cancellationToken).ConfigureAwait(false);
+                    }
+                    foreach (SignedCms info in signedData)
+                    {
+                        await pipeline.WriteObjectAsync(
+                            SignatureHelper.WrapSignedDataForPS(info, path),
+                            cancellationToken: cancellationToken).ConfigureAwait(false);
+                    }
                 }
             }
             catch (Exception e)
@@ -378,7 +371,7 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
 {
     private bool _disposeProvider;
     private HashAlgorithmName _hashAlgo = default!;
-    private KeyProvider? _provider;
+    private KeyProvider? _key;
     private readonly List<HashOperation> _operations = [];
 
     [Parameter(
@@ -451,11 +444,6 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
     public KeyProvider? Key { get; set; }
 
     [Parameter()]
-    [EncodingTransformation]
-    [ArgumentCompletions("Utf8", "ASCII", "ANSI", "OEM", "Unicode", "Utf8Bom", "Utf8NoBom")]
-    public Encoding? Encoding { get; set; }
-
-    [Parameter()]
     [ArgumentCompletions("SHA1", "SHA256", "SHA384", "SHA512")]
     public HashAlgorithmName? HashAlgorithm { get; set; }
 
@@ -484,7 +472,7 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
             _disposeProvider = true;
 
             KeyType keyType = Certificate.GetOpenAuthenticodeKeyType();
-            _provider = keyType switch
+            _key = keyType switch
             {
                 KeyType.RSA => new ManagedRSAKeyProvider(Certificate),
                 KeyType.ECDsa => new ManagedECDsaKeyProvider(Certificate),
@@ -494,12 +482,12 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
         else
         {
             Debug.Assert(Key != null);
-            _provider = Key;
+            _key = Key;
         }
 
-        _hashAlgo = HashAlgorithm ?? _provider.DefaultHashAlgorithm ?? HashAlgorithmName.SHA256;
+        _hashAlgo = HashAlgorithm ?? _key.DefaultHashAlgorithm ?? HashAlgorithmName.SHA256;
 
-        HashSet<string> allowedAlgorithms = _provider.AllowedAlgorithms;
+        HashSet<string> allowedAlgorithms = _key.AllowedAlgorithms;
         if (_hashAlgo.Name is not null && allowedAlgorithms.Count > 0 && !allowedAlgorithms.Contains(_hashAlgo.Name))
         {
             string allowedAlgos = string.Join(", ", allowedAlgorithms.OrderBy(h => h));
@@ -516,7 +504,7 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
 
     protected override async Task ProcessRecordAsync(AsyncPipeline pipeline, CancellationToken cancellationToken)
     {
-        Debug.Assert(_provider is not null);
+        Debug.Assert(_key is not null);
 
         (string, ProviderInfo)[] paths = await NormalizePathsAsync(pipeline, cancellationToken).ConfigureAwait(false);
 
@@ -545,16 +533,16 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
 
             try
             {
-                byte[] fileData = File.ReadAllBytes(path);
-                IAuthenticodeProvider provider;
+                FileStream fileStream = File.Open(path, FileMode.Open, FileAccess.ReadWrite);
+                AuthenticodeProviderBase provider;
                 if (Provider != null && Provider != AuthenticodeProvider.NotSpecified)
                 {
-                    provider = ProviderFactory.Create(Provider.Value, fileData, fileEncoding: Encoding);
+                    provider = ProviderFactory.Create(Provider.Value, fileStream, requireWrite: true);
                 }
                 else
                 {
                     string ext = System.IO.Path.GetExtension(path);
-                    provider = ProviderFactory.Create(ext, fileData, fileEncoding: Encoding);
+                    provider = ProviderFactory.Create(ext, fileStream, requireWrite: true);
                 }
 
                 Oid digestOid = SpcIndirectData.OidFromHashAlgorithm(_hashAlgo);
@@ -573,16 +561,16 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
                         ci,
                         attributesToSign,
                         _hashAlgo,
-                        _provider.Certificate,
+                        _key.Certificate,
                         IncludeOption,
-                        _provider.Key,
+                        _key.Key,
                         null,
                         null,
                         true);
                 }
                 catch (CapturedHashException e)
                 {
-                    _provider.RegisterHashAndContext(path, e.Hash);
+                    _key.RegisterHashAndContext(path, e.Hash);
                     HashOperation operation = new(
                         Path: path,
                         Provider: provider,
@@ -594,7 +582,7 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
                 }
 
                 // This should not occur, the CapturedHashException should have been called.
-                throw new RuntimeException($"Unknown failure trying to capture data hash for '{path}'");
+                Debug.Fail($"Provider {provider.Provider} did not throw CapturedHashException as expected");
             }
             catch (Exception e)
             {
@@ -613,10 +601,10 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
 
     protected override async Task EndProcessingAsync(AsyncPipeline pipeline, CancellationToken cancellationToken)
     {
-        Debug.Assert(_provider is not null);
+        Debug.Assert(_key is not null);
 
         // Let the key provider know that we are done with the hashing
-        bool res = await _provider.FinalizeHashAsync(
+        bool res = await _key.FinalizeHashAsync(
             pipeline,
             _hashAlgo,
             cancellationToken).ConfigureAwait(false);
@@ -634,9 +622,9 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
                     operation.ContentInfo,
                     operation.SignedAttributes,
                     _hashAlgo,
-                    _provider.Certificate,
+                    _key.Certificate,
                     IncludeOption,
-                    _provider.Key,
+                    _key.Key,
                     TimeStampServer,
                     TimeStampHashAlgorithm,
                     Silent);
@@ -648,7 +636,7 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
                 bool shouldProcess = await pipeline.ShouldProcessAsync(operation.Path, "SetSignature", cancellationToken).ConfigureAwait(false);
                 if (shouldProcess)
                 {
-                    operation.Provider.Save(operation.Path);
+                    operation.Provider.Save();
                 }
 
                 if (PassThru)
@@ -666,6 +654,11 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
                 await pipeline.WriteErrorAsync(err, cancellationToken: cancellationToken).ConfigureAwait(false);
                 continue;
             }
+            finally
+            {
+                // Dispose provider after processing (whether successful or not)
+                operation.Provider.Dispose();
+            }
         }
     }
 
@@ -673,10 +666,16 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
     {
         if (isDisposing)
         {
-            _provider?.ClearHashOperations();
+            _key?.ClearHashOperations();
             if (_disposeProvider)
             {
-                _provider?.Dispose();
+                _key?.Dispose();
+            }
+
+            // Dispose any remaining providers that weren't disposed in EndProcessingAsync
+            foreach (HashOperation operation in _operations)
+            {
+                operation.Provider?.Dispose();
             }
         }
 
@@ -686,7 +685,7 @@ public abstract class AddSetOpenAuthenticodeSignature : OpenAuthenticodeSignatur
 
 internal sealed record HashOperation(
     string Path,
-    IAuthenticodeProvider Provider,
+    AuthenticodeProviderBase Provider,
     byte[] AuthenticodeDigest,
     ContentInfo ContentInfo,
     AsnEncodedData[] SignedAttributes
