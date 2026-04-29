@@ -844,4 +844,41 @@ Describe "PowerShell Authenticode" {
             $stream.Dispose()
         }
     }
+
+    It "Handles script with incomplete signature block (no end block)" {
+        $scriptContent = @"
+Write-Host test
+
+# SIG # Begin signature block
+# InvalidBase64Content
+"@
+        $scriptPath = New-Item -Path temp: -Name incomplete-sig.ps1 -Force -Value $scriptContent
+
+        # Should not find a valid signature
+        $actual = Get-OpenAuthenticodeSignature -Path $scriptPath -ErrorAction SilentlyContinue -ErrorVariable err
+        $actual | Should -BeNullOrEmpty
+        $err.Count | Should -Be 1
+        [string]$err | Should -BeLike "*does not contain an authenticode signature*"
+    }
+
+    It "Handles script with signature block that has extra content after end" {
+        $scriptPath = New-Item -Path temp: -Name script.ps1 -Force -Value "Write-Host test`r`n"
+
+        $setParams = @{
+            Path = $scriptPath
+            Certificate = $cert
+        }
+        Set-OpenAuthenticodeSignature @setParams
+
+        # Add extra content after the signature block
+        $content = Get-Content $scriptPath -Raw
+        $content += "Write-Host 'extra content'"
+        Set-Content -Path $scriptPath -Value $content -NoNewline
+
+        # Should not find a valid signature when extra content is present
+        $actual = Get-OpenAuthenticodeSignature -Path $scriptPath -ErrorAction SilentlyContinue -ErrorVariable err
+        $actual | Should -BeNullOrEmpty
+        $err.Count | Should -Be 1
+        [string]$err | Should -BeLike "*does not contain an authenticode signature*"
+    }
 }
