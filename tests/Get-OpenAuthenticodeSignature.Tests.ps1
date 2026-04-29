@@ -63,4 +63,41 @@ Describe "Get-OpenAuthenticodeSignature" {
         $err.Count | Should -Be 1
         [string]$err | Should -Be "Authenticode support for '' has not been implemented"
     }
+
+    It "Fails with unsupported file extension" {
+        $scriptPath = New-Item -Path temp: -Name test.xyz -Force -Value "test"
+        $actual = Get-OpenAuthenticodeSignature -Path $scriptPath -ErrorAction SilentlyContinue -ErrorVariable err
+        $actual | Should -BeNullOrEmpty
+        $err.Count | Should -Be 1
+        [string]$err | Should -Be "Authenticode support for '.xyz' has not been implemented"
+    }
+
+    It "Fails with unsupported provider enum value" {
+        # Create an invalid provider value using Enum.ToObject
+        $invalidProvider = [Enum]::ToObject([OpenAuthenticode.Providers.AuthenticodeProvider], 999)
+        $stream = [System.IO.MemoryStream]::new([byte[]]@(0, 1, 2, 3))
+        try {
+            $actual = Get-OpenAuthenticodeSignature -Stream $stream -Provider $invalidProvider -ErrorAction SilentlyContinue -ErrorVariable err
+            $actual | Should -BeNullOrEmpty
+            $err.Count | Should -Be 1
+            [string]$err | Should -Be "Authenticode support for '999' has not been implemented"
+        }
+        finally {
+            $stream.Dispose()
+        }
+    }
+
+    It "Fails with non-seekable stream" {
+        $data = [byte[]]@(0, 1, 2, 3)
+        $stream = [TestStream]::new($data, $false, $false)
+        try {
+            $actual = Get-OpenAuthenticodeSignature -Stream $stream -Provider PowerShell -ErrorAction SilentlyContinue -ErrorVariable err
+            $actual | Should -BeNullOrEmpty
+            $err.Count | Should -Be 1
+            [string]$err | Should -BeLike "*Stream must be seekable*"
+        }
+        finally {
+            $stream.Dispose()
+        }
+    }
 }

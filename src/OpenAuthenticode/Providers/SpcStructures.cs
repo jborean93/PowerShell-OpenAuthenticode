@@ -433,7 +433,9 @@ internal sealed record SpcLink(string? Url = null, SpcSerializedObject? Moniker 
         }
         else if (tag.TagValue == 1)
         {
-            moniker = SpcSerializedObject.Parse(data.Slice(offset, length), expectedTag: tag);
+            // For IMPLICIT tagging, the context tag replaces the SEQUENCE tag.
+            // SpcSerializedObject.Parse expects to read the tag, so pass full data not sliced.
+            moniker = SpcSerializedObject.Parse(data, expectedTag: tag);
         }
         else if (tag.TagValue == 2)
         {

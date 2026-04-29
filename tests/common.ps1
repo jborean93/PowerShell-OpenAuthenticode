@@ -160,3 +160,84 @@ Function global:New-CodeSigningCert {
 
     New-X509Certificate @PSBoundParameters -Extension $extensions
 }
+
+# Custom test stream for testing stream validation
+if (-not ([System.Management.Automation.PSTypeName]'TestStream').Type) {
+    Add-Type -TypeDefinition @'
+using System;
+using System.IO;
+
+public class TestStream : Stream
+{
+    private readonly MemoryStream _innerStream;
+    private readonly bool _canSeek;
+    private readonly bool _canWrite;
+
+    public TestStream(byte[] data, bool canSeek, bool canWrite)
+    {
+        _innerStream = new MemoryStream(data, writable: canWrite);
+        _canSeek = canSeek;
+        _canWrite = canWrite;
+    }
+
+    public override bool CanRead => true;
+    public override bool CanSeek => _canSeek;
+    public override bool CanWrite => _canWrite;
+    public override long Length => _innerStream.Length;
+
+    public override long Position
+    {
+        get => _innerStream.Position;
+        set
+        {
+            if (!_canSeek)
+            {
+                throw new NotSupportedException("Stream does not support seeking");
+            }
+            _innerStream.Position = value;
+        }
+    }
+
+    public override void Flush() => _innerStream.Flush();
+
+    public override int Read(byte[] buffer, int offset, int count)
+        => _innerStream.Read(buffer, offset, count);
+
+    public override long Seek(long offset, SeekOrigin origin)
+    {
+        if (!_canSeek)
+        {
+            throw new NotSupportedException("Stream does not support seeking");
+        }
+        return _innerStream.Seek(offset, origin);
+    }
+
+    public override void SetLength(long value)
+    {
+        if (!_canWrite)
+        {
+            throw new NotSupportedException("Stream does not support writing");
+        }
+        _innerStream.SetLength(value);
+    }
+
+    public override void Write(byte[] buffer, int offset, int count)
+    {
+        if (!_canWrite)
+        {
+            throw new NotSupportedException("Stream does not support writing");
+        }
+        _innerStream.Write(buffer, offset, count);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _innerStream?.Dispose();
+        }
+        base.Dispose(disposing);
+    }
+}
+'@
+}
