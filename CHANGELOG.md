@@ -42,10 +42,13 @@
 * **New `-Stream` parameter** for `Get-OpenAuthenticodeSignature`
   * Allows verification of authenticode signatures from any readable, seekable stream
   * Requires `-Provider` parameter to specify file type
-* Added APPX/MSIX authenticode provider support for Windows App Packages (.appx, .msix, .appxbundle, .msixbundle)
+* Added APPX/MSIX authenticode provider support for Windows App Packages
+  * `Appx` provider for .appx and .msix packages
+  * `AppxBundle` provider for .appxbundle and .msixbundle bundles
   * Full implementation of all 5 digest fields (AXPC, AXCD, AXCT, AXBM, AXCI)
   * Verified against Microsoft-signed packages
   * Support for SHA-256, SHA-384, and SHA-512 algorithms
+  * Streaming hash calculation for XML files (no caching in memory)
 
 ### Changed
 

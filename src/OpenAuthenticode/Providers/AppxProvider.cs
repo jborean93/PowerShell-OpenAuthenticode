@@ -1,14 +1,15 @@
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Security.Cryptography;
-using System.Text;
 
 namespace OpenAuthenticode.Providers;
 
 /// <summary>
-/// Authenticode provider for APPX/MSIX Windows App Packages.
+/// Base provider for APPX/MSIX Windows App Packages and Bundles.
 /// </summary>
 /// <remarks>
 /// APPX/MSIX packages are ZIP-based archives containing application files,
@@ -17,85 +18,67 @@ namespace OpenAuthenticode.Providers;
 /// XML files (AppxBlockMap.xml, [Content_Types].xml, and optionally
 /// AppxMetadata/CodeIntegrity.cat) to generate the signature content.
 /// </remarks>
-internal class AppxProvider : AuthenticodeProviderBase
+internal abstract class AppxProviderBase : AuthenticodeProviderBase
 {
-    private readonly bool _isBundle;
+    private readonly ZipStructure _zipStructure;
+    private readonly ZipEntry? _signatureEntry;
 
-    // Cached XML content for hashing
-    private readonly byte[] _blockMapXml;
-    private readonly byte[] _contentTypesXml;
-    private readonly byte[]? _codeIntegrityCat;
+    /// <summary>
+    /// Gets the SIP GUID for this provider type (Package or Bundle).
+    /// </summary>
+    protected abstract Guid SipGuid { get; }
 
-    public override AuthenticodeProvider Provider => AuthenticodeProvider.Appx;
-
-    internal static string[] FileExtensions => [ ".appx", ".msix", ".appxbundle", ".msixbundle" ];
-
-    private AppxProvider(
+    protected AppxProviderBase(
         Stream stream,
         bool leaveOpen,
         byte[] signature,
-        bool isBundle,
-        byte[] blockMapXml,
-        byte[] contentTypesXml,
-        byte[]? codeIntegrityCat)
+        ZipStructure zipStructure,
+        ZipEntry? signatureEntry)
         : base(stream, leaveOpen)
     {
         Signature = signature;
-
-        _isBundle = isBundle;
-        _blockMapXml = blockMapXml;
-        _contentTypesXml = contentTypesXml;
-        _codeIntegrityCat = codeIntegrityCat;
+        _zipStructure = zipStructure;
+        _signatureEntry = signatureEntry;
     }
 
     /// <summary>
-    /// Creates an AppxProvider instance from APPX/MSIX package stream.
+    /// Creates a provider instance from APPX/MSIX stream (common logic).
     /// </summary>
-    /// <param name="stream">The package stream (ZIP archive)</param>
-    /// <param name="leaveOpen">Whether to leave the stream open after disposal</param>
-    /// <returns>An initialized AppxProvider instance</returns>
-    /// <exception cref="ArgumentException">Thrown if the package is invalid</exception>
-    /// <exception cref="InvalidDataException">Thrown if the ZIP structure is corrupted</exception>
-    public static AppxProvider Create(Stream stream, bool leaveOpen)
+    protected static (byte[] signature, ZipStructure zipStructure, ZipEntry? signatureEntry) CreateCommon(
+        Stream stream)
     {
-        // Stream validation handled by ProviderFactory
-        long originalPosition = stream.Position;
-        stream.Position = 0;
+        ZipStructure zipStructure = ZipStructure.Create(stream);
+        ZipEntry? signatureEntry = null;
 
+        stream.Position = 0;
         using ZipArchive archive = new(stream, ZipArchiveMode.Read, leaveOpen: true);
 
-        // Detect bundle vs package format
-        // Bundle manifests can be at root or in AppxMetadata directory
-        bool isBundle = archive.GetEntry("AppxBundleManifest.xml") != null ||
-                        archive.GetEntry("AppxMetadata/AppxBundleManifest.xml") != null;
-
-        if (!isBundle && archive.GetEntry("AppxManifest.xml") == null)
+        byte[] signature = [];
+        if (zipStructure.TryGetEntryByName(stream, "AppxSignature.p7x", out ZipEntry tempSigEntry))
         {
-            throw new ArgumentException("Invalid APPX/MSIX package: No manifest found (expected AppxManifest.xml, AppxBundleManifest.xml, or AppxMetadata/AppxBundleManifest.xml)");
-        }
+            signatureEntry = tempSigEntry;
 
-        // These three files are needed for the signature digest generation.
-        // CodeIntegrity.cat is optional and may not be present.
-        byte[] blockMapXml = ReadEntry(archive, "AppxBlockMap.xml", required: true)!;
-        byte[] contentTypesXml = ReadEntry(archive, "[Content_Types].xml", required: true)!;
-        byte[]? codeIntegrityCat = ReadEntry(archive, "AppxMetadata/CodeIntegrity.cat", required: false);
 
-        // Read existing signature if present
-        byte[]? signature = ReadEntry(archive, "AppxSignature.p7x", required: false);
-        if (signature is not null)
-        {
-            ReadOnlySpan<byte> sigSpan = signature;
-            if (sigSpan.Length < 4 || !sigSpan[..4].SequenceEqual("PKCX"u8))
+            ZipArchiveEntry? entry = archive.GetEntry("AppxSignature.p7x");
+            Debug.Assert(entry != null, "Signature entry should exist since TryGetEntryByName succeeded");
+
+            using Stream entryStream = entry.Open();
+
+            // We need to validate the signature starts with PKCX. By reading
+            // it we also strip the prefix on the final CopyTo array dest.
+            Span<byte> headerBuffer = stackalloc byte[4];
+            int bytesRead = entryStream.Read(headerBuffer);
+            if (bytesRead != 4 || !headerBuffer.SequenceEqual("PKCX"u8))
             {
                 throw new ArgumentException("Invalid signature format: Expected P7X file with 'PKCX' magic header");
             }
 
-            signature = sigSpan[4..].ToArray(); // Strip the 4-byte header
+            using MemoryStream ms = new((int)entry.Length - 4);
+            entryStream.CopyTo(ms);
+            signature = ms.GetBuffer();
         }
 
-        stream.Position = originalPosition;
-
-        return new AppxProvider(stream, leaveOpen, signature ?? [], isBundle, blockMapXml, contentTypesXml, codeIntegrityCat);
+        return (signature, zipStructure, signatureEntry);
     }
 
     /// <summary>
@@ -104,18 +87,20 @@ internal class AppxProvider : AuthenticodeProviderBase
     /// <param name="digestAlgorithm">The hash algorithm to use</param>
     /// <returns>The SpcIndirectData structure containing the hashes</returns>
     /// <exception cref="CryptographicException">Thrown if an unsupported hash algorithm is specified</exception>
-    public SpcIndirectData HashData(Oid digestAlgorithm)
+    public override SpcIndirectData HashData(Oid digestAlgorithm)
     {
         HashAlgorithmName hashAlgoName = HashAlgorithmName.FromOid(digestAlgorithm.Value ?? "");
+        using IncrementalHash hasher = IncrementalHash.CreateHash(hashAlgoName);
 
-        // Hash the XML files
-        byte[] contentTypesHash = HashBytes(_contentTypesXml, hashAlgoName);
-        byte[] blockMapHash = HashBytes(_blockMapXml, hashAlgoName);
-        byte[]? codeIntegrityHash = _codeIntegrityCat != null ? HashBytes(_codeIntegrityCat, hashAlgoName) : null;
+        // Stream XML files from ZIP and hash on demand
+        Stream.Position = 0;
+        using ZipArchive archive = new(Stream, ZipArchiveMode.Read, leaveOpen: true);
+        ZipArchiveEntry? axciEntry = archive.GetEntry("AppxMetadata/CodeIntegrity.cat");
 
-        // Compute ZIP structure hashes
-        byte[] axpcHash = ComputeAxpcHash(hashAlgoName);
-        byte[] axcdHash = ComputeAxcdHash(hashAlgoName);
+        int digestCount = axciEntry != null ? 5 : 4; // AXPC, AXCD, AXCT, AXBM, and optionally AXCI
+        int digestLength = 4 + (hasher.HashLengthInBytes + 4) * digestCount;
+        byte[] digest = new byte[digestLength];
+        Span<byte> digestSpan = digest;
 
         // Build the APPX digest blob in the format:
         // [8-byte header "APPXAXPC"][N-byte AXPC hash]
@@ -123,33 +108,25 @@ internal class AppxProvider : AuthenticodeProviderBase
         // [4-byte "AXCT"][N-byte AXCT hash]
         // [4-byte "AXBM"][N-byte AXBM hash]
         // [4-byte "AXCI"][N-byte AXCI hash] (if code integrity present)
-        using MemoryStream digestBlob = new();
-        using BinaryWriter writer = new(digestBlob);
-
-        writer.Write("APPXAXPC"u8);
-        writer.Write(axpcHash);
-        writer.Write("AXCD"u8);
-        writer.Write(axcdHash);
-        writer.Write("AXCT"u8);
-        writer.Write(contentTypesHash);
-        writer.Write("AXBM"u8);
-        writer.Write(blockMapHash);
-
-        if (codeIntegrityHash != null)
+        "APPX"u8.CopyTo(digest);
+        ComputeAxpcHash(hasher, digestSpan[4..]);
+        ComputeAxcdHash(hasher, digestSpan[(8 + hasher.HashLengthInBytes)..]);
+        ComputeEntryHash(archive, "[Content_Types].xml", hasher, "AXCT"u8, digestSpan, 2);
+        ComputeEntryHash(archive, "AppxBlockMap.xml", hasher, "AXBM"u8, digestSpan, 3);
+        if (axciEntry != null)
         {
-            writer.Write("AXCI"u8);
-            writer.Write(codeIntegrityHash);
+            ComputeEntryHash(
+                archive,
+                "AppxMetadata/CodeIntegrity.cat",
+                hasher,
+                "AXCI"u8,
+                digestSpan,
+                4,
+                entry: axciEntry);
         }
 
-        byte[] digestBlobBytes = digestBlob.ToArray();
-
-        // Create SpcSipInfo with appropriate GUID
-        // Package GUID: {0ac5df4b-ce07-4de2-b76e-23c839a09fd1}
-        // Bundle GUID:  {0f5f58b3-aade-4b9a-a434-95742d92eceb}
-        Guid sipGuid = _isBundle
-            ? new Guid("0f5f58b3-aade-4b9a-a434-95742d92eceb")
-            : new Guid("0ac5df4b-ce07-4de2-b76e-23c839a09fd1");
-        SpcSipInfo sipInfo = new(Version: 0x01010000, Identifier: sipGuid);
+        // Create SpcSipInfo with SIP GUID from derived class
+        SpcSipInfo sipInfo = new(Version: 0x01010000, Identifier: SipGuid);
         byte[] sipInfoBytes = sipInfo.GetBytes();
 
         return new SpcIndirectData(
@@ -157,14 +134,14 @@ internal class AppxProvider : AuthenticodeProviderBase
             Data: sipInfoBytes,
             DigestAlgorithm: digestAlgorithm,
             DigestParameters: null,
-            Digest: digestBlobBytes);
+            Digest: digest);
     }
 
     /// <summary>
     /// Gets the attributes to include in the signature.
     /// </summary>
     /// <returns>The encoded attributes</returns>
-    public AsnEncodedData[] GetAttributesToSign()
+    public override AsnEncodedData[] GetAttributesToSign()
     {
         // FUTURE: Find a way for the user to specify these values as params
         // but keep empty for now.
@@ -220,119 +197,93 @@ internal class AppxProvider : AuthenticodeProviderBase
     }
 
     /// <summary>
-    /// Reads an entry from the ZIP archive.
+    /// Hashes a ZIP entry by name.
     /// </summary>
     /// <param name="archive">The ZIP archive</param>
-    /// <param name="name">The entry name</param>
-    /// <param name="required">Whether the entry is required</param>
-    /// <returns>The entry data, or null if not required and not found</returns>
-    /// <exception cref="ArgumentException">Thrown if a required entry is not found</exception>
-    private static byte[]? ReadEntry(ZipArchive archive, string name, bool required)
+    /// <param name="entryName">The entry name to hash</param>
+    /// <param name="hasher">The hashing object</param>
+    /// <param name="header">The 4-byte header to prefix the hash with</param>
+    /// <param name="dest">The destination buffer to write the header and hash to</param>
+    /// <param name="hashEntry">The index of the hash entry (0-based)</param>
+    /// <param name="entry">The ZIP archive entry to hash, otherwise the entry will be looked up by name</param>
+    private static void ComputeEntryHash(
+        ZipArchive archive,
+        string entryName,
+        IncrementalHash hasher,
+        ReadOnlySpan<byte> header,
+        Span<byte> dest,
+        int hashEntry,
+        ZipArchiveEntry? entry = null)
     {
-        ZipArchiveEntry? entry = archive.GetEntry(name);
-        if (entry == null)
+        int hashOffset = 4 + (hasher.HashLengthInBytes + 4) * hashEntry;
+        Debug.Assert(hashOffset + hasher.HashLengthInBytes <= dest.Length, "Destination buffer is too small for hash output");
+        Debug.Assert(header.Length == 4, "Header must be exactly 4 bytes");
+
+        if (entry is null)
         {
-            if (required)
+            entry = archive.GetEntry(entryName)
+                ?? throw new ArgumentException($"Invalid APPX/MSIX package: Required file '{entryName}' not found");
+        }
+
+        using Stream entryStream = entry.Open();
+        byte[] rentedBuffer = ArrayPool<byte>.Shared.Rent(8192);
+        try
+        {
+            int bytesRead;
+            while ((bytesRead = entryStream.Read(rentedBuffer, 0, 8192)) > 0)
             {
-                throw new ArgumentException($"Invalid APPX/MSIX package: Required file '{name}' not found");
+                hasher.AppendData(rentedBuffer, 0, bytesRead);
             }
-            return null;
         }
-
-        // Limit entry size to prevent ZIP bomb attacks
-        const long MAX_ENTRY_SIZE = 100 * 1024 * 1024; // 100MB
-        if (entry.Length > MAX_ENTRY_SIZE)
+        finally
         {
-            throw new ArgumentException($"Entry '{name}' exceeds maximum size of {MAX_ENTRY_SIZE} bytes");
+            ArrayPool<byte>.Shared.Return(rentedBuffer);
         }
 
-        using Stream stream = entry.Open();
-        using MemoryStream ms = new((int)entry.Length);
-        stream.CopyTo(ms);
-        return ms.ToArray();
-    }
-
-    /// <summary>
-    /// Computes the hash of a byte array using the specified algorithm.
-    /// </summary>
-    /// <param name="data">The data to hash</param>
-    /// <param name="algorithm">The hash algorithm</param>
-    /// <returns>The computed hash</returns>
-    private static byte[] HashBytes(byte[] data, HashAlgorithmName algorithm)
-    {
-        using IncrementalHash hasher = IncrementalHash.CreateHash(algorithm);
-        hasher.AppendData(data);
-        return hasher.GetHashAndReset();
+        header.CopyTo(dest.Slice(hashOffset, 4));
+        hasher.GetHashAndReset(dest.Slice(hashOffset + 4, hasher.HashLengthInBytes));
     }
 
     /// <summary>
     /// Computes the AXPC hash (ZIP local file headers).
     /// </summary>
-    /// <param name="algorithm">The hash algorithm</param>
-    /// <returns>The hash of all file records up to central directory</returns>
-    private byte[] ComputeAxpcHash(HashAlgorithmName algorithm)
+    /// <param name="hasher">The hashing object</param>
+    /// <param name="dest">The destination buffer for the hash output</param>
+    private void ComputeAxpcHash(IncrementalHash hasher, Span<byte> dest)
     {
-        using IncrementalHash hasher = IncrementalHash.CreateHash(algorithm);
+        Debug.Assert(dest.Length >= 4 + hasher.HashLengthInBytes, "Destination buffer is too small for AXPC hash output");
 
-        // Read the stream into a byte array for processing
-        Stream.Position = 0;
-        byte[] zipData = new byte[Stream.Length];
-        Stream.Read(zipData, 0, zipData.Length);
-
-        // Find the central directory offset
-        long centralDirOffset = ZipStructure.FindCentralDirectoryOffset(zipData);
-
-        // Find the AppxSignature.p7x record offset and size (if it exists)
-        long sigOffset = -1;
-        long sigRecordSize = 0;
-
-        var (cdOffset, _, localHeaderOffset) = ZipStructure.FindCentralDirectoryEntry(
-            zipData,
-            "AppxSignature.p7x"u8);
-
-        if (cdOffset >= 0)
+        long cdOffset = _zipStructure.CentralDirectoryOffset;
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(8192);
+        try
         {
-            sigOffset = localHeaderOffset;
+            Span<byte> bufferSpan = buffer.AsSpan();
 
-            // Calculate signature record size: header + data + data descriptor
-            using MemoryStream ms = new(zipData);
-            using ZipArchive archive = new(ms, ZipArchiveMode.Read, leaveOpen: true);
-            ZipArchiveEntry? sigEntry = archive.GetEntry("AppxSignature.p7x");
-            if (sigEntry != null)
+            if (!_signatureEntry.HasValue)
             {
-                ushort fileNameLen = BinaryPrimitives.ReadUInt16LittleEndian(zipData.Slice((int)(sigOffset + 26), 2));
-                ushort extraLen = BinaryPrimitives.ReadUInt16LittleEndian(zipData.Slice((int)(sigOffset + 28), 2));
-                int headerSize = 30 + fileNameLen + extraLen;
-                const int DATA_DESCRIPTOR_SIZE = 24; // ZIP64 format
-                sigRecordSize = headerSize + sigEntry.CompressedLength + DATA_DESCRIPTOR_SIZE;
+                // No signature - hash everything up to central directory
+                HashStreamRange(hasher, 0, cdOffset, bufferSpan);
+            }
+            else
+            {
+                // If the AppxSignature.p7x entry is present we need to exclude
+                // the local file header, compressed data, and descriptor from
+                // the hash.
+                long sigOffset = _signatureEntry.Value.LocalHeaderOffset;
+                long sigRecordSize = _signatureEntry.Value.LocalHeaderLength +
+                    _signatureEntry.Value.CompressedLength +
+                    _signatureEntry.Value.DescriptorLength;
+
+                HashStreamRangeWithExclusion(hasher, 0, cdOffset, sigOffset, sigRecordSize, bufferSpan);
             }
         }
-
-        // Hash file records excluding signature
-        if (sigOffset < 0)
+        finally
         {
-            // No signature - hash everything up to central directory
-            hasher.AppendData(zipData[..(int)centralDirOffset]);
-        }
-        else if (sigOffset == 0)
-        {
-            // Signature at start - hash after it
-            hasher.AppendData(zipData[(int)sigRecordSize..(int)centralDirOffset]);
-        }
-        else
-        {
-            // Hash before signature
-            hasher.AppendData(zipData[..(int)sigOffset]);
-
-            // Hash after signature
-            long afterSigOffset = sigOffset + sigRecordSize;
-            if (afterSigOffset < centralDirOffset)
-            {
-                hasher.AppendData(zipData[(int)afterSigOffset..(int)centralDirOffset]);
-            }
+            ArrayPool<byte>.Shared.Return(buffer);
         }
 
-        return hasher.GetHashAndReset();
+        "AXPC"u8.CopyTo(dest);
+        hasher.GetHashAndReset(dest[4..]);
     }
 
     /// <summary>
@@ -340,153 +291,213 @@ internal class AppxProvider : AuthenticodeProviderBase
     /// </summary>
     /// <remarks>
     /// The AXCD hash includes:
-    /// 1. Central directory entries (excluding AppxSignature.p7x)
-    /// 2. ZIP64 EOCD with adjusted entry count, CD size, and CD offset
-    /// 3. ZIP64 EOCD locator with adjusted EOCD offset
-    /// 4. Regular EOCD with disk numbers zeroed
+    /// 1. Central directory entries (excluding AppxSignature.p7x if present)
+    /// 2. ZIP64 EOCD with zeroed disk numbers and adjusted entry count, CD size, and CD offset (if ZIP64)
+    /// 3. ZIP64 EOCD locator with adjusted EOCD offset (if ZIP64)
+    /// 4. Regular EOCD with:
+    ///    - Disk numbers zeroed (always)
+    ///    - Adjusted entry count, CD size, and CD offset (non-ZIP64 only)
+    ///    - For ZIP64 packages, these fields contain placeholder values (0xFFFF/0xFFFFFFFF)
+    ///      that point to the ZIP64 EOCD and don't need adjustment
     /// </remarks>
-    /// <param name="algorithm">The hash algorithm</param>
-    /// <returns>The hash of the central directory structures</returns>
-    private byte[] ComputeAxcdHash(HashAlgorithmName algorithm)
+    /// <param name="hasher">The hashing object</param>
+    /// <param name="dest">The destination buffer for the hash output</param>
+    private void ComputeAxcdHash(
+        IncrementalHash hasher,
+        Span<byte> dest)
     {
-        using IncrementalHash hasher = IncrementalHash.CreateHash(algorithm);
+        Debug.Assert(dest.Length >= 4 + hasher.HashLengthInBytes, "Destination buffer is too small for AXCD hash output");
 
-        // Read the stream into a byte array for processing
-        Stream.Position = 0;
-        byte[] zipDataArray = new byte[Stream.Length];
-        Stream.Read(zipDataArray, 0, zipDataArray.Length);
-        ReadOnlySpan<byte> zipData = zipDataArray;
+        long cdOffset = _zipStructure.CentralDirectoryOffset;
+        long cdSize = _zipStructure.CentralDirectoryLength;
+        long totalEntries = _zipStructure.CentralDirectoryCount;
 
-        // Find the AppxSignature.p7x entry in the central directory
-        var (signatureCdOffset, signatureCdSize, signatureLocalHeaderOffset) = ZipStructure.FindCentralDirectoryEntry(
-            zipData,
-            "AppxSignature.p7x"u8);
-
-        long cdOffset = ZipStructure.FindCentralDirectoryOffset(zipData);
-        long cdSize = ZipStructure.FindCentralDirectorySize(zipData);
-        long totalEntries = ZipStructure.FindTotalEntries(zipData);
-        long cdEnd = cdOffset + cdSize;
-
-        // Step 1: Hash central directory entries (excluding signature entry)
-        if (signatureCdOffset >= 0)
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(8192);
+        try
         {
-            // Hash before signature entry
-            if (signatureCdOffset > cdOffset)
+            Span<byte> bufferSpan = buffer.AsSpan();
+
+            // Step 1: Hash central directory entries excluding signature
+            // entry if present.
+            if (_signatureEntry.HasValue)
             {
-                hasher.AppendData(zipData[(int)cdOffset..(int)signatureCdOffset]);
+                long signatureCdOffset = _signatureEntry.Value.CentralDirectoryOffset;
+                long signatureCdSize = _signatureEntry.Value.CentralDirectoryLength;
+
+                // Hash CD while excluding the signature's central directory record
+                HashStreamRangeWithExclusion(
+                    hasher,
+                    cdOffset,
+                    cdSize,
+                    signatureCdOffset,
+                    signatureCdSize,
+                    bufferSpan);
+
+                // Calculate adjusted values for EOCD structures with the signature entry excluded.
+                // - CD offset: signature's local header offset as the CD would have started here.
+                // - CD size: smaller (exclude signature's CD record)
+                // - Entry count: one less (exclude signature entry)
+                cdOffset = _signatureEntry.Value.LocalHeaderOffset;
+                cdSize -= signatureCdSize;
+                totalEntries -= 1;
+            }
+            else
+            {
+                HashStreamRange(hasher, cdOffset, cdSize, bufferSpan);
             }
 
-            // Hash after signature entry
-            long afterSigEntry = signatureCdOffset + signatureCdSize;
-            if (afterSigEntry < cdEnd)
+            // Step 2 & 3: Hash ZIP64 structures if present
+            if (_zipStructure.Zip64.HasValue)
             {
-                hasher.AppendData(zipData[(int)afterSigEntry..(int)cdEnd]);
+                Zip64Eocd zip64 = _zipStructure.Zip64.Value;
+
+                // Step 2: Read and adjust ZIP64 EOCD (including extensible data if present)
+                // FIXME: Test with extensible data set - verify this logic is correct
+                // ZIP64 EOCD = 56 byte fixed header + optional extensible data sector
+                // Zero disk numbers and adjust entry counts, CD size, and CD offset in the fixed header
+                Stream.Position = zip64.Offset;
+                Stream.Read(bufferSpan[..Zip64Eocd.MinLength]);
+
+                Span<byte> eocd64 = bufferSpan[..Zip64Eocd.MinLength];
+                BinaryPrimitives.WriteUInt32LittleEndian(eocd64[16..], 0);           // Zero disk number
+                BinaryPrimitives.WriteUInt32LittleEndian(eocd64[20..], 0);           // Zero disk number with CD
+                BinaryPrimitives.WriteInt64LittleEndian(eocd64[24..], totalEntries); // Entries on disk
+                BinaryPrimitives.WriteInt64LittleEndian(eocd64[32..], totalEntries); // Total entries
+                BinaryPrimitives.WriteInt64LittleEndian(eocd64[40..], cdSize);       // CD size
+                BinaryPrimitives.WriteInt64LittleEndian(eocd64[48..], cdOffset);     // CD offset
+                hasher.AppendData(eocd64);
+
+                // Hash any extensible data sector (if present)
+                long extensibleDataLength = zip64.Length - Zip64Eocd.MinLength;
+                if (extensibleDataLength > 0)
+                {
+                    HashStreamRange(
+                        hasher,
+                        zip64.Offset + Zip64Eocd.MinLength,
+                        extensibleDataLength,
+                        bufferSpan);
+                }
+
+                // Step 3: Hash ZIP64 EOCD locator with adjusted offset
+                // The EOCD offset needs to account for the adjusted CD offset and size
+                Stream.Position = zip64.LocatorOffset;
+                Stream.Read(bufferSpan[..Zip64Eocd.LocatorLength]);
+
+                Span<byte> eocd64Locator = bufferSpan[..Zip64Eocd.LocatorLength];
+                long adjustedEocdOffset = cdOffset + cdSize;
+                BinaryPrimitives.WriteInt32LittleEndian(eocd64Locator[4..], 0); // Zero disk number with EOCD
+                BinaryPrimitives.WriteInt64LittleEndian(eocd64Locator[8..], adjustedEocdOffset);
+                hasher.AppendData(eocd64Locator);
             }
+
+            // Step 4: Hash regular EOCD with zero'd disk numbers and if not
+            // ZIP64 then also adjust entry count, CD size, and CD offset.
+            Span<byte> eocd = bufferSpan[..ZipStructure.EocdMinLength];
+            Stream.Position = _zipStructure.EndOfCentralDirectoryOffset;
+            Stream.Read(bufferSpan);
+
+            // Always zero disk numbers (offsets 4 and 6)
+            BinaryPrimitives.WriteUInt16LittleEndian(eocd[4..], 0);
+            BinaryPrimitives.WriteUInt16LittleEndian(eocd[6..], 0);
+            if (!_zipStructure.Zip64.HasValue)
+            {
+                BinaryPrimitives.WriteUInt16LittleEndian(eocd[8..], (ushort)totalEntries);
+                BinaryPrimitives.WriteUInt16LittleEndian(eocd[10..], (ushort)totalEntries);
+                BinaryPrimitives.WriteUInt32LittleEndian(eocd[12..], (uint)cdSize);
+                BinaryPrimitives.WriteUInt32LittleEndian(eocd[16..], (uint)cdOffset);
+            }
+
+            // Need to hash the adjusted EOCD and the (optional) comment after.
+            hasher.AppendData(eocd);
+
+            int commentLength = _zipStructure.EndOfCentralDirectoryLength - ZipStructure.EocdMinLength;
+            if (commentLength > 0)
+            {
+                HashStreamRange(
+                    hasher,
+                    _zipStructure.EndOfCentralDirectoryOffset + ZipStructure.EocdMinLength,
+                    commentLength,
+                    bufferSpan);
+            }
+
+            "AXCD"u8.CopyTo(dest);
+            hasher.GetHashAndReset(dest[4..]);
         }
-        else
+        finally
         {
-            // No signature entry found, hash entire central directory
-            hasher.AppendData(zipData[(int)cdOffset..(int)cdEnd]);
+            ArrayPool<byte>.Shared.Return(buffer);
         }
+    }
+}
 
-        // Calculate adjusted values for EOCD structures
-        long adjustedEntryCount = signatureCdOffset >= 0 ? totalEntries - 1 : totalEntries;
-        long adjustedCdSize = signatureCdOffset >= 0 ? cdSize - signatureCdSize : cdSize;
-        long calculatedCdOffset = signatureCdOffset >= 0 ? signatureLocalHeaderOffset : cdOffset;
+/// <summary>
+/// Authenticode provider for APPX/MSIX Windows App Packages.
+/// </summary>
+internal class AppxProvider : AppxProviderBase
+{
+    protected override Guid SipGuid => new("0ac5df4b-ce07-4de2-b76e-23c839a09fd1");
 
-        // Find EOCD position
-        long eocdPos = FindEocdPosition(zipData);
-        uint cdSize32 = BinaryPrimitives.ReadUInt32LittleEndian(zipData.Slice((int)(eocdPos + 12), 4));
+    public override AuthenticodeProvider Provider => AuthenticodeProvider.Appx;
 
-        // Step 2 & 3: Hash ZIP64 structures if present
-        if (cdSize32 == 0xFFFFFFFF)
-        {
-            long zip64EocdOffset = FindZip64EocdOffset(zipData, eocdPos);
-            const int ZIP64_EOCD_MIN_SIZE = 56;
-            const int ZIP64_EOCD_LOCATOR_SIZE = 20;
+    internal static string[] FileExtensions => [ ".appx", ".msix" ];
 
-            // Hash ZIP64 EOCD with adjusted values
-            Span<byte> adjustedZip64Eocd = stackalloc byte[ZIP64_EOCD_MIN_SIZE];
-            zipData.Slice((int)zip64EocdOffset, ZIP64_EOCD_MIN_SIZE).CopyTo(adjustedZip64Eocd);
-
-            BinaryPrimitives.WriteInt64LittleEndian(adjustedZip64Eocd[24..], adjustedEntryCount);
-            BinaryPrimitives.WriteInt64LittleEndian(adjustedZip64Eocd[32..], adjustedEntryCount);
-            BinaryPrimitives.WriteInt64LittleEndian(adjustedZip64Eocd[40..], adjustedCdSize);
-            BinaryPrimitives.WriteInt64LittleEndian(adjustedZip64Eocd[48..], calculatedCdOffset);
-
-            hasher.AppendData(adjustedZip64Eocd);
-
-            // Hash ZIP64 EOCD locator with adjusted offset
-            Span<byte> adjustedZip64Locator = stackalloc byte[ZIP64_EOCD_LOCATOR_SIZE];
-            zipData.Slice((int)(eocdPos - ZIP64_EOCD_LOCATOR_SIZE), ZIP64_EOCD_LOCATOR_SIZE)
-                .CopyTo(adjustedZip64Locator);
-
-            long adjustedEocdOffset = calculatedCdOffset + adjustedCdSize;
-            BinaryPrimitives.WriteInt64LittleEndian(adjustedZip64Locator[8..], adjustedEocdOffset);
-
-            hasher.AppendData(adjustedZip64Locator);
-        }
-
-        // Step 4: Hash regular EOCD with disk numbers zeroed
-        ushort commentLen = BinaryPrimitives.ReadUInt16LittleEndian(zipData.Slice((int)(eocdPos + 20), 2));
-        const int EOCD_MIN_SIZE = 22;
-        int eocdSize = EOCD_MIN_SIZE + commentLen;
-
-        Span<byte> adjustedEocd = stackalloc byte[eocdSize];
-        zipData.Slice((int)eocdPos, eocdSize).CopyTo(adjustedEocd);
-
-        // Zero disk numbers
-        BinaryPrimitives.WriteUInt16LittleEndian(adjustedEocd[4..], 0);
-        BinaryPrimitives.WriteUInt16LittleEndian(adjustedEocd[6..], 0);
-
-        hasher.AppendData(adjustedEocd);
-
-        return hasher.GetHashAndReset();
+    private AppxProvider(
+        Stream stream,
+        bool leaveOpen,
+        byte[] signature,
+        ZipStructure zipStructure,
+        ZipEntry? signatureEntry)
+        : base(stream, leaveOpen, signature, zipStructure, signatureEntry)
+    {
     }
 
     /// <summary>
-    /// Finds the End of Central Directory position in the ZIP archive.
+    /// Creates an AppxProvider instance from APPX/MSIX package stream.
     /// </summary>
-    private static long FindEocdPosition(ReadOnlySpan<byte> zipData)
+    /// <param name="stream">The package stream (ZIP archive)</param>
+    /// <param name="leaveOpen">Whether to leave the stream open after disposal</param>
+    /// <returns>An initialized AppxProvider instance</returns>
+    /// <exception cref="ArgumentException">Thrown if the package is invalid</exception>
+    /// <exception cref="InvalidDataException">Thrown if the ZIP structure is corrupted</exception>
+    public static AppxProvider Create(Stream stream, bool leaveOpen)
     {
-        const uint EOCD_SIGNATURE = 0x06054b50;
-        const int EOCD_MIN_SIZE = 22;
+        var (signature, zipStructure, signatureEntry) = CreateCommon(stream);
+        return new AppxProvider(stream, leaveOpen, signature, zipStructure, signatureEntry);
+    }
+}
 
-        // Search backwards from end of file for EOCD signature
-        for (long i = zipData.Length - EOCD_MIN_SIZE; i >= 0; i--)
-        {
-            uint sig = BinaryPrimitives.ReadUInt32LittleEndian(zipData.Slice((int)i, 4));
-            if (sig == EOCD_SIGNATURE)
-                return i;
-        }
+/// <summary>
+/// Authenticode provider for APPX/MSIX Bundle packages.
+/// </summary>
+internal class AppxBundleProvider : AppxProviderBase
+{
+    protected override Guid SipGuid => new("0f5f58b3-aade-4b9a-a434-95742d92eceb");
 
-        throw new InvalidDataException("Could not find End of Central Directory record in ZIP");
+    public override AuthenticodeProvider Provider => AuthenticodeProvider.AppxBundle;
+
+    internal static string[] FileExtensions => [ ".appxbundle", ".msixbundle" ];
+
+    private AppxBundleProvider(
+        Stream stream,
+        bool leaveOpen,
+        byte[] signature,
+        ZipStructure zipStructure,
+        ZipEntry? signatureEntry)
+        : base(stream, leaveOpen, signature, zipStructure, signatureEntry)
+    {
     }
 
     /// <summary>
-    /// Finds the ZIP64 End of Central Directory offset.
+    /// Creates an AppxBundleProvider instance from APPX/MSIX bundle stream.
     /// </summary>
-    private static long FindZip64EocdOffset(ReadOnlySpan<byte> zipData, long eocdPos)
+    /// <param name="stream">The bundle stream (ZIP archive)</param>
+    /// <param name="leaveOpen">Whether to leave the stream open after disposal</param>
+    /// <returns>An initialized AppxBundleProvider instance</returns>
+    /// <exception cref="ArgumentException">Thrown if the bundle is invalid</exception>
+    /// <exception cref="InvalidDataException">Thrown if the ZIP structure is corrupted</exception>
+    public static AppxBundleProvider Create(Stream stream, bool leaveOpen)
     {
-        const uint ZIP64_EOCD_LOCATOR_SIGNATURE = 0x07064b50;
-        const uint ZIP64_EOCD_SIGNATURE = 0x06064b50;
-        const int ZIP64_EOCD_LOCATOR_SIZE = 20;
-
-        long locatorPos = eocdPos - ZIP64_EOCD_LOCATOR_SIZE;
-        if (locatorPos < 0)
-            throw new InvalidDataException("ZIP64 locator position invalid");
-
-        uint locatorSig = BinaryPrimitives.ReadUInt32LittleEndian(zipData.Slice((int)locatorPos, 4));
-        if (locatorSig != ZIP64_EOCD_LOCATOR_SIGNATURE)
-            throw new InvalidDataException("ZIP64 End of Central Directory Locator not found");
-
-        long zip64EocdOffset = BinaryPrimitives.ReadInt64LittleEndian(zipData.Slice((int)(locatorPos + 8), 8));
-
-        uint zip64EocdSig = BinaryPrimitives.ReadUInt32LittleEndian(zipData.Slice((int)zip64EocdOffset, 4));
-        if (zip64EocdSig != ZIP64_EOCD_SIGNATURE)
-            throw new InvalidDataException("ZIP64 End of Central Directory signature invalid");
-
-        return zip64EocdOffset;
+        var (signature, zipStructure, signatureEntry) = CreateCommon(stream);
+        return new AppxBundleProvider(stream, leaveOpen, signature, zipStructure, signatureEntry);
     }
-
 }

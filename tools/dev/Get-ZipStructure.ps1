@@ -417,7 +417,7 @@ function Get-Zip64EndOfCentralDirectory {
         throw "EOCD64 signature not found at expected offset"
     }
 
-    $sizeOfEOCD64 = [BinaryPrimitives]::ReadInt64LittleEndian($dataView.Slice(4, 8))
+    $sizeOfEOCD64 = [BinaryPrimitives]::ReadInt64LittleEndian($dataView.Slice(4, 12))
     $versionMadeBy = [BinaryPrimitives]::ReadInt16LittleEndian($dataView.Slice(12, 2))
     $versionNeeded = [BinaryPrimitives]::ReadInt16LittleEndian($dataView.Slice(14, 2))
     $diskNumber = [BinaryPrimitives]::ReadInt32LittleEndian($dataView.Slice(16, 4))

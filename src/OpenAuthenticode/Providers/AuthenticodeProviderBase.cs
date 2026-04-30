@@ -39,10 +39,15 @@ internal abstract class AuthenticodeProviderBase : IDisposable
     /// <summary>
     /// Hash a range of data from the stream using a pooled buffer.
     /// </summary>
-    /// <param name="algo">The hash algorithm to append data to</param>
+    /// <param name="hasher">The hashing object to append data to</param>
     /// <param name="offset">The offset in the stream to start reading from</param>
     /// <param name="length">The number of bytes to read and hash</param>
-    protected void HashStreamRange(IncrementalHash algo, long offset, int length)
+    /// <param name="buffer">A buffer to use for reading data</param>
+    protected void HashStreamRange(
+        IncrementalHash hasher,
+        long offset,
+        long length,
+        Span<byte> buffer)
     {
         if (length <= 0)
         {
@@ -50,26 +55,66 @@ internal abstract class AuthenticodeProviderBase : IDisposable
         }
 
         Stream.Position = offset;
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
-        try
-        {
-            int remaining = length;
-            while (remaining > 0)
-            {
-                int toRead = Math.Min(remaining, BufferSize);
-                int bytesRead = Stream.Read(buffer, 0, toRead);
-                if (bytesRead == 0)
-                {
-                    break;
-                }
 
-                algo.AppendData(buffer, 0, bytesRead);
-                remaining -= bytesRead;
+        long remaining = length;
+        while (remaining > 0)
+        {
+            // As buffer.Length is an int we can be sure the result will fit
+            // into an int.
+            int toRead = (int)Math.Min(remaining, buffer.Length);
+            int bytesRead = Stream.Read(buffer[..toRead]);
+            if (bytesRead == 0)
+            {
+                break;
+            }
+
+            hasher.AppendData(buffer[..bytesRead]);
+            remaining -= bytesRead;
+        }
+    }
+
+    /// <summary>
+    /// Hashes a stream range while excluding a specific section.
+    /// </summary>
+    /// <param name="hasher">The hashing object to append data to</param>
+    /// <param name="rangeOffset">The starting offset of the range to hash</param>
+    /// <param name="rangeLength">The total length of the range to hash</param>
+    /// <param name="excludeOffset">The offset of the section to exclude (absolute, not relative)</param>
+    /// <param name="excludeLength">The length of the section to exclude</param>
+    /// <param name="buffer">A buffer to use for reading data</param>
+    protected void HashStreamRangeWithExclusion(
+        IncrementalHash hasher,
+        long rangeOffset,
+        long rangeLength,
+        long excludeOffset,
+        long excludeLength,
+        Span<byte> buffer)
+    {
+        long rangeEnd = rangeOffset + rangeLength;
+        long excludeEnd = excludeOffset + excludeLength;
+
+        // If exclusion is at the start of the range
+        if (excludeOffset == rangeOffset)
+        {
+            // Hash after exclusion (if there's anything after)
+            if (excludeEnd < rangeEnd)
+            {
+                HashStreamRange(hasher, excludeEnd, rangeEnd - excludeEnd, buffer);
             }
         }
-        finally
+        else
         {
-            ArrayPool<byte>.Shared.Return(buffer);
+            // Hash before exclusion
+            if (excludeOffset > rangeOffset)
+            {
+                HashStreamRange(hasher, rangeOffset, excludeOffset - rangeOffset, buffer);
+            }
+
+            // Hash after exclusion (if there's anything after)
+            if (excludeEnd < rangeEnd)
+            {
+                HashStreamRange(hasher, excludeEnd, rangeEnd - excludeEnd, buffer);
+            }
         }
     }
 

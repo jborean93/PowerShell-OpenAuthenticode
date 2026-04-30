@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.IO;
 using System.Linq;
@@ -132,21 +133,22 @@ internal class PEBinaryProvider : AuthenticodeProviderBase
 
     public override SpcIndirectData HashData(Oid digestAlgorithm)
     {
-        byte[] fileHash;
         HashAlgorithmName algoName = HashAlgorithmName.FromOid(digestAlgorithm.Value ?? "");
-        using (IncrementalHash algo = IncrementalHash.CreateHash(algoName))
-        {
-            // First hash up to the checksum field
-            HashStreamRange(algo, 0, _metadata.ChecksumOffset);
 
-            // Hash everything from after the checksum to the start of the Certificate Table entry
-            int length = _metadata.CertificateTableOffset - (_metadata.ChecksumOffset + sizeof(uint));
-            HashStreamRange(algo, _metadata.ChecksumOffset + sizeof(uint), length);
+        byte[] fileHash;
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(8192);
+        try
+        {
+            using IncrementalHash algo = IncrementalHash.CreateHash(algoName);
+
+            // Hash up to certificate table offset, excluding checksum (4 bytes) and certificate table entry (8 bytes)
+            // First exclude the checksum
+            HashStreamRangeWithExclusion(algo, 0, _metadata.CertificateTableOffset, _metadata.ChecksumOffset, sizeof(uint), buffer);
 
             // Hash the remaining data in the headers excluding the Certificate Table entry.
             int offset = _metadata.CertificateTableOffset + 8;
-            length = _metadata.SizeOfHeaders - offset;
-            HashStreamRange(algo, offset, length);
+            int length = _metadata.SizeOfHeaders - offset;
+            HashStreamRange(algo, offset, length, buffer);
 
             // Process each section where the SizeOfRawData is greater than 1 and order by the data offset.
             int sumOfBytesHashed = _metadata.SizeOfHeaders;
@@ -154,7 +156,7 @@ internal class PEBinaryProvider : AuthenticodeProviderBase
                 .Where(h => h.SizeOfRawData > 0)
                 .OrderBy(h => h.PointerToRawData))
             {
-                HashStreamRange(algo, section.PointerToRawData, section.SizeOfRawData);
+                HashStreamRange(algo, section.PointerToRawData, section.SizeOfRawData, buffer);
                 sumOfBytesHashed += section.SizeOfRawData;
             }
 
@@ -162,7 +164,7 @@ internal class PEBinaryProvider : AuthenticodeProviderBase
             int remainingLength = (int)Stream.Length - (_metadata.CertificateTableSize + sumOfBytesHashed);
             if (remainingLength > 0)
             {
-                HashStreamRange(algo, sumOfBytesHashed, remainingLength);
+                HashStreamRange(algo, sumOfBytesHashed, remainingLength, buffer);
             }
 
             // If the file hasn't been signed yet, check to see if padding will
@@ -175,6 +177,10 @@ internal class PEBinaryProvider : AuthenticodeProviderBase
             }
 
             fileHash = algo.GetCurrentHash();
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
         }
 
         SpcPeImageData imageData = new SpcPeImageData(
