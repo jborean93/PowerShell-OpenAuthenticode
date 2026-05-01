@@ -24,7 +24,6 @@ internal abstract class PowerShellProvider : AuthenticodeProviderBase
     protected PowerShellProvider(Stream stream, bool leaveOpen)
         : base(stream, leaveOpen)
     {
-        // Stream validation and position reset handled by ProviderFactory
         // Read stream into byte array once
         byte[] data = new byte[stream.Length];
         using (MemoryStream ms = new(data, writable: true))
@@ -112,7 +111,6 @@ internal abstract class PowerShellProvider : AuthenticodeProviderBase
 
     public override void Save()
     {
-        // Stream validation happens in ProviderFactory or cmdlet
         Stream.SetLength(0);
         Stream.Position = 0;
 

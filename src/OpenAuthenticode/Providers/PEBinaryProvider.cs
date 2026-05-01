@@ -68,7 +68,6 @@ internal class PEBinaryProvider : AuthenticodeProviderBase
     /// <returns>The PEBinaryProvider</returns>
     public static PEBinaryProvider Create(Stream stream, bool leaveOpen)
     {
-        // Stream validation and position reset handled by ProviderFactory
         // Use LeaveOpen and PrefetchMetadata to only read metadata, not entire file
         using PEReader reader = new(stream, PEStreamOptions.LeaveOpen | PEStreamOptions.PrefetchMetadata);
         PEHeader header = reader.PEHeaders.PEHeader

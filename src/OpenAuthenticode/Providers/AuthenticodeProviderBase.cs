@@ -10,7 +10,6 @@ namespace OpenAuthenticode.Providers;
 /// </summary>
 internal abstract class AuthenticodeProviderBase : IDisposable
 {
-    private const int BufferSize = 8192;
     private readonly Stream _stream;
     private readonly bool _leaveOpen;
 

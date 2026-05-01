@@ -1,10 +1,11 @@
 using System;
 using System.Buffers;
-using System.Buffers.Binary;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using OpenAuthenticode.Zip;
 
 namespace OpenAuthenticode.Providers;
 
@@ -20,6 +21,8 @@ namespace OpenAuthenticode.Providers;
 /// </remarks>
 internal abstract class AppxProviderBase : AuthenticodeProviderBase
 {
+    private const string SignatureFileName = "AppxSignature.p7x";
+
     private readonly ZipStructure _zipStructure;
     private readonly ZipEntry? _signatureEntry;
 
@@ -54,12 +57,11 @@ internal abstract class AppxProviderBase : AuthenticodeProviderBase
         using ZipArchive archive = new(stream, ZipArchiveMode.Read, leaveOpen: true);
 
         byte[] signature = [];
-        if (zipStructure.TryGetEntryByName(stream, "AppxSignature.p7x", out ZipEntry tempSigEntry))
+        if (zipStructure.TryGetEntryByName(stream, SignatureFileName, out ZipEntry tempSigEntry))
         {
             signatureEntry = tempSigEntry;
 
-
-            ZipArchiveEntry? entry = archive.GetEntry("AppxSignature.p7x");
+            ZipArchiveEntry? entry = archive.GetEntry(SignatureFileName);
             Debug.Assert(entry != null, "Signature entry should exist since TryGetEntryByName succeeded");
 
             using Stream entryStream = entry.Open();
@@ -159,41 +161,24 @@ internal abstract class AppxProviderBase : AuthenticodeProviderBase
     /// <summary>
     /// Saves the package with the updated signature to the stream.
     /// </summary>
-    /// <exception cref="IOException">Thrown if the stream cannot be written</exception>
     public override void Save()
     {
-        // Stream validation happens in ProviderFactory or cmdlet
-        // Create a temporary memory stream to build the updated ZIP
-        using MemoryStream tempStream = new();
-
-        // Copy current stream contents to temp
-        Stream.Position = 0;
-        Stream.CopyTo(tempStream);
-        tempStream.Position = 0;
-
-        // Update the ZIP archive in the temp stream
-        using (ZipArchive archive = new(tempStream, ZipArchiveMode.Update, leaveOpen: true))
+        if (Signature.Length == 0)
         {
-            // Remove existing signature
-            archive.GetEntry("AppxSignature.p7x")?.Delete();
-
-            // Add new signature if present
-            if (Signature.Length > 0)
-            {
-                ZipArchiveEntry sigEntry = archive.CreateEntry("AppxSignature.p7x", CompressionLevel.Optimal);
-                using Stream entryStream = sigEntry.Open();
-
-                entryStream.Write("PKCX"u8);
-                entryStream.Write(Signature);
-            }
+            // If we are removing the signature we don't care about how .NET
+            // updates the ZIP so we can just remove it.
+            using ZipArchive archive = new(Stream, ZipArchiveMode.Update, leaveOpen: true);
+            archive.GetEntry(SignatureFileName)?.Delete();
         }
-
-        // Write the updated ZIP back to the original stream
-        Stream.SetLength(0);
-        Stream.Position = 0;
-        tempStream.Position = 0;
-        tempStream.CopyTo(Stream);
-        Stream.Flush();
+        else
+        {
+            // .NET will rebuild the CD and EOCD values and convert a Zip64
+            // setup to regular ZIP if the files are small enough. We need to
+            // preserve the existing structure to avoid invalidating the
+            // signature.
+            using MemoryStream sigStream = new MemoryStream(Signature, writable: false);
+            ZipBuilder.AddEntry(Stream, _zipStructure, SignatureFileName, sigStream);
+        }
     }
 
     /// <summary>
@@ -253,7 +238,7 @@ internal abstract class AppxProviderBase : AuthenticodeProviderBase
     {
         Debug.Assert(dest.Length >= 4 + hasher.HashLengthInBytes, "Destination buffer is too small for AXPC hash output");
 
-        long cdOffset = _zipStructure.CentralDirectoryOffset;
+        long cdOffset = _zipStructure.CD.Offset;
         byte[] buffer = ArrayPool<byte>.Shared.Rent(8192);
         try
         {
@@ -308,9 +293,9 @@ internal abstract class AppxProviderBase : AuthenticodeProviderBase
     {
         Debug.Assert(dest.Length >= 4 + hasher.HashLengthInBytes, "Destination buffer is too small for AXCD hash output");
 
-        long cdOffset = _zipStructure.CentralDirectoryOffset;
-        long cdSize = _zipStructure.CentralDirectoryLength;
-        long totalEntries = _zipStructure.CentralDirectoryCount;
+        long cdOffset = _zipStructure.CD.Offset;
+        long cdSize = _zipStructure.CD.Length;
+        long totalEntries = _zipStructure.CD.Count;
 
         byte[] buffer = ArrayPool<byte>.Shared.Rent(8192);
         try
@@ -347,33 +332,34 @@ internal abstract class AppxProviderBase : AuthenticodeProviderBase
             }
 
             // Step 2 & 3: Hash ZIP64 structures if present
-            if (_zipStructure.Zip64.HasValue)
+            if (_zipStructure.EOCD64.HasValue)
             {
-                Zip64Eocd zip64 = _zipStructure.Zip64.Value;
+                ZipEocd64Info zip64 = _zipStructure.EOCD64.Value;
 
                 // Step 2: Read and adjust ZIP64 EOCD (including extensible data if present)
                 // FIXME: Test with extensible data set - verify this logic is correct
                 // ZIP64 EOCD = 56 byte fixed header + optional extensible data sector
                 // Zero disk numbers and adjust entry counts, CD size, and CD offset in the fixed header
                 Stream.Position = zip64.Offset;
-                Stream.Read(bufferSpan[..Zip64Eocd.MinLength]);
+                Stream.Read(bufferSpan[..EndOfCentralDirectory64.MinLength]);
 
-                Span<byte> eocd64 = bufferSpan[..Zip64Eocd.MinLength];
-                BinaryPrimitives.WriteUInt32LittleEndian(eocd64[16..], 0);           // Zero disk number
-                BinaryPrimitives.WriteUInt32LittleEndian(eocd64[20..], 0);           // Zero disk number with CD
-                BinaryPrimitives.WriteInt64LittleEndian(eocd64[24..], totalEntries); // Entries on disk
-                BinaryPrimitives.WriteInt64LittleEndian(eocd64[32..], totalEntries); // Total entries
-                BinaryPrimitives.WriteInt64LittleEndian(eocd64[40..], cdSize);       // CD size
-                BinaryPrimitives.WriteInt64LittleEndian(eocd64[48..], cdOffset);     // CD offset
-                hasher.AppendData(eocd64);
+                Span<byte> eocd64Span = bufferSpan[..EndOfCentralDirectory64.MinLength];
+                ref EndOfCentralDirectory64 eocd64 = ref MemoryMarshal.AsRef<EndOfCentralDirectory64>(eocd64Span);
+                eocd64.DiskNumber = 0;
+                eocd64.CentralDirectoryStartDisk = 0;
+                eocd64.CentralDirectoryRecordsOnDisk = totalEntries;
+                eocd64.CentralDirectoryTotalRecords = totalEntries;
+                eocd64.CentralDirectoryLength = cdSize;
+                eocd64.CentralDirectoryOffset = cdOffset;
+                hasher.AppendData(eocd64Span);
 
                 // Hash any extensible data sector (if present)
-                long extensibleDataLength = zip64.Length - Zip64Eocd.MinLength;
+                long extensibleDataLength = zip64.Length - EndOfCentralDirectory64.MinLength;
                 if (extensibleDataLength > 0)
                 {
                     HashStreamRange(
                         hasher,
-                        zip64.Offset + Zip64Eocd.MinLength,
+                        zip64.Offset + EndOfCentralDirectory64.MinLength,
                         extensibleDataLength,
                         bufferSpan);
                 }
@@ -381,41 +367,42 @@ internal abstract class AppxProviderBase : AuthenticodeProviderBase
                 // Step 3: Hash ZIP64 EOCD locator with adjusted offset
                 // The EOCD offset needs to account for the adjusted CD offset and size
                 Stream.Position = zip64.LocatorOffset;
-                Stream.Read(bufferSpan[..Zip64Eocd.LocatorLength]);
+                Stream.Read(bufferSpan[..EndOfCentralDirectory64Locator.MinLength]);
 
-                Span<byte> eocd64Locator = bufferSpan[..Zip64Eocd.LocatorLength];
+                Span<byte> eocd64LocatorSpan = bufferSpan[..EndOfCentralDirectory64Locator.MinLength];
                 long adjustedEocdOffset = cdOffset + cdSize;
-                BinaryPrimitives.WriteInt32LittleEndian(eocd64Locator[4..], 0); // Zero disk number with EOCD
-                BinaryPrimitives.WriteInt64LittleEndian(eocd64Locator[8..], adjustedEocdOffset);
-                hasher.AppendData(eocd64Locator);
+                ref EndOfCentralDirectory64Locator eocd64Locator = ref MemoryMarshal.AsRef<EndOfCentralDirectory64Locator>(eocd64LocatorSpan);
+                eocd64Locator.DiskNumber = 0;
+                eocd64Locator.EndOfCentralDirectoryOffset = adjustedEocdOffset;
+                hasher.AppendData(eocd64LocatorSpan);
             }
 
             // Step 4: Hash regular EOCD with zero'd disk numbers and if not
             // ZIP64 then also adjust entry count, CD size, and CD offset.
-            Span<byte> eocd = bufferSpan[..ZipStructure.EocdMinLength];
-            Stream.Position = _zipStructure.EndOfCentralDirectoryOffset;
+            Span<byte> eocdSpan = bufferSpan[..EndOfCentralDirectory.MinLength];
+            Stream.Position = _zipStructure.EOCD.Offset;
             Stream.Read(bufferSpan);
 
-            // Always zero disk numbers (offsets 4 and 6)
-            BinaryPrimitives.WriteUInt16LittleEndian(eocd[4..], 0);
-            BinaryPrimitives.WriteUInt16LittleEndian(eocd[6..], 0);
-            if (!_zipStructure.Zip64.HasValue)
+            ref EndOfCentralDirectory eocd = ref MemoryMarshal.AsRef<EndOfCentralDirectory>(eocdSpan);
+            eocd.DiskNumber = 0;
+            eocd.CentralDirectoryStartDisk = 0;
+            if (!_zipStructure.EOCD64.HasValue)
             {
-                BinaryPrimitives.WriteUInt16LittleEndian(eocd[8..], (ushort)totalEntries);
-                BinaryPrimitives.WriteUInt16LittleEndian(eocd[10..], (ushort)totalEntries);
-                BinaryPrimitives.WriteUInt32LittleEndian(eocd[12..], (uint)cdSize);
-                BinaryPrimitives.WriteUInt32LittleEndian(eocd[16..], (uint)cdOffset);
+                eocd.CentralDirectoryRecordsOnDisk = (ushort)totalEntries;
+                eocd.CentralDirectoryTotalRecords = (ushort)totalEntries;
+                eocd.CentralDirectoryLength = (uint)cdSize;
+                eocd.CentralDirectoryOffset = (uint)cdOffset;
             }
 
             // Need to hash the adjusted EOCD and the (optional) comment after.
-            hasher.AppendData(eocd);
+            hasher.AppendData(eocdSpan);
 
-            int commentLength = _zipStructure.EndOfCentralDirectoryLength - ZipStructure.EocdMinLength;
+            int commentLength = _zipStructure.EOCD.Length - EndOfCentralDirectory.MinLength;
             if (commentLength > 0)
             {
                 HashStreamRange(
                     hasher,
-                    _zipStructure.EndOfCentralDirectoryOffset + ZipStructure.EocdMinLength,
+                    _zipStructure.EOCD.Offset + EndOfCentralDirectory.MinLength,
                     commentLength,
                     bufferSpan);
             }

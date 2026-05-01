@@ -1,14 +1,23 @@
 using System;
 using System.Buffers;
-using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 
-namespace OpenAuthenticode;
+namespace OpenAuthenticode.Zip;
 
+/// <summary>
+/// Represents a ZIP entry with information about the central directory record and local file header for the entry.
+/// </summary>
+/// <param name="CentralDirectoryOffset">The offset of the central directory record for this entry in the ZIP archive.</param>
+/// <param name="CentralDirectoryLength">The length of the central directory record for this entry.</param>
+/// <param name="LocalHeaderOffset">The offset of the local file header for this entry in the ZIP archive.</param>
+/// <param name="LocalHeaderLength">The length of the local file header for this entry.</param>
+/// <param name="CompressedLength">The length of the compressed data for this entry.</param>
+/// <param name="DescriptorLength">The length of the data descriptor for this entry, if present.</param>
 internal readonly record struct ZipEntry(
     long CentralDirectoryOffset,
     long CentralDirectoryLength,
@@ -18,25 +27,36 @@ internal readonly record struct ZipEntry(
     int DescriptorLength);
 
 /// <summary>
+/// Represents the central directory information for a ZIP archive.
+/// </summary>
+/// <param name="Offset">The offset of the central directory in the ZIP archive.</param>
+/// <param name="Length">The length of the central directory in bytes.</param>
+/// <param name="Count">The total number of central directory records at the offset.</param>
+internal readonly record struct ZipCentralDirectoryInfo(
+    long Offset,
+    long Length,
+    long Count);
+
+/// <summary>
+/// Represents the End of Central Directory (EOCD) record information for a ZIP archive.
+/// </summary>
+/// <param name="Offset">The offset of the EOCD record in the ZIP archive.</param>
+/// <param name="Length">The length of the EOCD record, including the variable-length comment.</param>
+internal readonly record struct ZipEocdInfo(
+    long Offset,
+    int Length);
+
+/// <summary>
 /// Represents ZIP64 structures (EOCD64, EOCD64 Locator).
 /// Only present for ZIP64 archives.
 /// </summary>
-internal readonly record struct Zip64Eocd(
+/// <param name="Offset">The offset of the EOCD64 record in the ZIP archive.</param>
+/// <param name="Length">The length of the EOCD64 record, including the variable-length extensible data sector.</param>
+/// <param name="LocatorOffset">The offset of the EOCD64 Locator record in the ZIP archive.</param>
+internal readonly record struct ZipEocd64Info(
     long Offset,
     long Length,
-    long LocatorOffset)
-{
-    /// <summary>
-    /// The fixed length of the ZIP64 EOCD record header (always 56 bytes).
-    /// Does not include the optional extensible data sector.
-    /// </summary>
-    public const int MinLength = 56;
-
-    /// <summary>
-    /// The fixed length of the ZIP64 EOCD Locator structure (always 20 bytes).
-    /// </summary>
-    public const int LocatorLength = 20;
-}
+    long LocatorOffset);
 
 /// <summary>
 /// Represents the structure of a ZIP archive, including the location and size
@@ -48,46 +68,66 @@ internal readonly record struct Zip64Eocd(
 /// </summary>
 internal class ZipStructure
 {
-    /// <summary>
-    /// The minimum size of the End of Central Directory record (22 bytes).
-    /// Does not include the optional comment field.
-    /// </summary>
-    public const int EocdMinLength = 22;
-
-    private const int CentralDirectoryMinSize = 46;
-    private const int LocalFileHeaderMinSize = 30;
-
     private readonly Dictionary<string, ZipEntry> _entriesByName = [];
     private long _cdReadOffset = 0;
 
     private ZipStructure(
-        long endOfCentralDirectoryOffset,
-        int endOfCentralDirectoryLength,
-        Zip64Eocd? zip64,
-        long centralDirectoryOffset,
-        long centralDirectoryLength,
-        long centralDirectoryCount)
+        ZipEocdInfo eocd,
+        ZipEocd64Info? eocd64,
+        ZipCentralDirectoryInfo cd)
     {
-        EndOfCentralDirectoryOffset = endOfCentralDirectoryOffset;
-        EndOfCentralDirectoryLength = endOfCentralDirectoryLength;
-        Zip64 = zip64;
-        CentralDirectoryOffset = centralDirectoryOffset;
-        CentralDirectoryLength = centralDirectoryLength;
-        CentralDirectoryCount = centralDirectoryCount;
+        EOCD = eocd;
+        EOCD64 = eocd64;
+        CD = cd;
     }
 
-    public long EndOfCentralDirectoryOffset { get; }
-    public int EndOfCentralDirectoryLength { get; }
+    public ZipEocdInfo EOCD { get; }
+    public ZipEocd64Info? EOCD64 { get; }
+    public ZipCentralDirectoryInfo CD { get; }
 
-    /// <summary>
-    /// ZIP64 structures (EOCD64 and EOCD64 Locator).
-    /// Only set for ZIP64 archives.
-    /// </summary>
-    public Zip64Eocd? Zip64 { get; }
+    public void AddEntry(
+        Stream zipStream,
+        string entryName,
+        ReadOnlySpan<byte> entryData)
+    {
+        string tempPath = Path.GetTempFileName();
+        using FileStream tempStream = new(
+            tempPath,
+            FileMode.Create,
+            FileAccess.ReadWrite,
+            FileShare.None,
+            bufferSize: 8192,
+            FileOptions.DeleteOnClose);
 
-    public long CentralDirectoryOffset { get; }
-    public long CentralDirectoryCount { get; }
-    public long CentralDirectoryLength { get; }
+        long cdStart = CD.Offset;
+        long truncateFrom = cdStart;
+
+        zipStream.Seek(cdStart, SeekOrigin.Begin);
+        if (TryGetEntryByName(zipStream, entryName, out ZipEntry entry))
+        {
+            truncateFrom = entry.LocalHeaderOffset;
+
+        }
+        else
+        {
+            zipStream.CopyTo(tempStream);
+        }
+
+        // Copy
+
+        zipStream.SetLength(truncateFrom);
+        zipStream.Position = truncateFrom;
+
+        // Write new entry local header
+        // Write new entry compressed data
+        // Write original CD records from temp stream.
+        // Write new CD record for the new entry
+        // (ZIP64) Update EOCD64 record offsets
+        // (ZIP64) Update EOCD64 locator
+        // Update EOCD record with new CD offset and length
+
+        return;
+    }
 
     /// <summary>
     /// Tries to get the ZIP entry information for the given entry name. If the
@@ -104,52 +144,54 @@ internal class ZipStructure
         string name,
         [NotNullWhen(true)] out ZipEntry entry)
     {
-        const short FlagHasDataDescriptor = 0x0008;
-        const short FlagIsUTF8 = 0x0800;
-
         entry = default;
         if (_entriesByName.TryGetValue(name, out entry))
         {
             return true;
         }
 
-        if (zipStream.Length < CentralDirectoryOffset + CentralDirectoryLength)
+        if (zipStream.Length < CD.Offset + CD.Length)
         {
             throw new InvalidDataException(
                 "Provided stream is not valid for the ZIP structure recorded, central directory extends beyond end of stream");
         }
 
-        if (_cdReadOffset >= CentralDirectoryLength)
+        if (_cdReadOffset >= CD.Length)
         {
             // We've already read all the CD records and haven't found the entry.
             return false;
         }
 
-        Span<byte> buffer = stackalloc byte[CentralDirectoryMinSize];
+        Span<byte> buffer = stackalloc byte[CentralDirectory.MinLength];
 
-        long offset = CentralDirectoryOffset + _cdReadOffset;
-        while (offset < CentralDirectoryOffset + CentralDirectoryLength)
+        long offset = CD.Offset + _cdReadOffset;
+        while (offset < CD.Offset + CD.Length)
         {
             long cdOffset = offset;
             zipStream.Seek(offset, SeekOrigin.Begin);
-            zipStream.Read(buffer);
+            zipStream.ReadExactly(buffer);
 
-            short flags = BinaryPrimitives.ReadInt16LittleEndian(buffer[8..10]);
-            long compressedLength = BinaryPrimitives.ReadInt32LittleEndian(buffer[20..24]);
-            long uncompressedLength = BinaryPrimitives.ReadInt32LittleEndian(buffer[24..28]);
-            short fileNameLen = BinaryPrimitives.ReadInt16LittleEndian(buffer[28..30]);
-            short extraFieldLen = BinaryPrimitives.ReadInt16LittleEndian(buffer[30..32]);
-            short fileCommentLen = BinaryPrimitives.ReadInt16LittleEndian(buffer[32..34]);
-            long localHeaderOffset = BinaryPrimitives.ReadInt32LittleEndian(buffer[42..46]);
+            ref readonly CentralDirectory cd = ref MemoryMarshal.AsRef<CentralDirectory>(buffer);
 
-            Encoding fileNameEncoding = (flags & FlagIsUTF8) != 0 ? Encoding.UTF8 : Encoding.GetEncoding(437);
+            // Read field values immediately before the buffer can be reused
+            ushort fileNameLen = cd.FileNameLength;
+            ushort extraFieldLen = cd.ExtraFieldLength;
+            ushort fileCommentLen = cd.FileCommentLength;
+            ZipFlags flags = cd.Flags;
+            long compressedLength = cd.CompressedLength;
+            long uncompressedLength = cd.UncompressedLength;
+            long localHeaderOffset = cd.LocalHeaderOffset;
+
+            Encoding fileNameEncoding = flags.HasFlag(ZipFlags.UTF8Encoding)
+                ? Encoding.UTF8
+                : Encoding.GetEncoding(437);
 
             string fileName = ReadString(zipStream, buffer, fileNameLen, fileNameEncoding);
 
             bool isZip64 = false;
-            if (compressedLength == -1 || uncompressedLength == -1 || localHeaderOffset == -1)
+            if (compressedLength == uint.MaxValue || uncompressedLength == uint.MaxValue || localHeaderOffset == uint.MaxValue)
             {
-                // If any of these fields are set to -1 then the actual value
+                // If any of these fields are set to 0xFFFFFFFF then the actual value
                 // is stored in the extra fields.
                 isZip64 = true;
                 (compressedLength, uncompressedLength, localHeaderOffset) = GetCentralDirectoryZip64ExtraFields(
@@ -171,10 +213,10 @@ internal class ZipStructure
                 buffer,
                 compressedLength,
                 localHeaderOffset,
-                (flags & FlagHasDataDescriptor) != 0,
+                flags.HasFlag(ZipFlags.DataDescriptor),
                 isZip64);
 
-            int cdLength = CentralDirectoryMinSize + fileNameLen + extraFieldLen + fileCommentLen;
+            int cdLength = CentralDirectory.MinLength + fileNameLen + extraFieldLen + fileCommentLen;
             offset += cdLength;
             _cdReadOffset += cdLength;
 
@@ -211,15 +253,17 @@ internal class ZipStructure
         // to read at least 22 + 65536 bytes from the end of the stream to find
         // the EOCD record. We also use the same buffer to read the EOCD64
         // and CD records and this size will fit all that data.
-        const int MaxCommentSize = ushort.MaxValue; // 65535
+        const int MaxCommentSize = ushort.MaxValue;
 
-        if (zipStream.Length < EocdMinLength)
+        if (zipStream.Length < EndOfCentralDirectory.MinLength)
         {
             throw new InvalidDataException(
                 "Stream is not a valid zip, it is too small to contain End of Central Directory record");
         }
 
-        int bufferSize = EocdMinLength + MaxCommentSize;
+        // This buffer should cover the EOCD, EOCD64 locator, EOCD64, and CD
+        // records needed to parse the ZIP structure.
+        int bufferSize = EndOfCentralDirectory.MinLength + MaxCommentSize;
         if (zipStream.Length < bufferSize)
         {
             bufferSize = (int)zipStream.Length;
@@ -228,18 +272,18 @@ internal class ZipStructure
         byte[] buffer = ArrayPool<byte>.Shared.Rent(bufferSize);
         try
         {
-            ReadOnlySpan<byte> eocdSig = [0x50, 0x4b, 0x05, 0x06];
             Span<byte> bufferSpan = buffer.AsSpan();
 
             zipStream.Seek(-bufferSize, SeekOrigin.End);
-            zipStream.Read(buffer, 0, bufferSize);
+            zipStream.ReadExactly(buffer, 0, bufferSize);
 
             ReadOnlySpan<byte> view = buffer.AsSpan(0, bufferSize);
+            ReadOnlySpan<byte> eocdSignature = MemoryMarshal.AsBytes([EndOfCentralDirectory.Signature]);
 
             int pos;
-            while ((pos = view.LastIndexOf(eocdSig)) != -1)
+            while ((pos = view.LastIndexOf(eocdSignature)) != -1)
             {
-                if (view.Length - pos < EocdMinLength)
+                if (view.Length - pos < EndOfCentralDirectory.MinLength)
                 {
                     // Checks the signature isn't in the comment field which
                     // can contain arbitrary data. If the signature is found
@@ -256,7 +300,7 @@ internal class ZipStructure
                 if (TryGetCentralDirectoryInformation(
                     zipStream,
                     bufferSpan,
-                    bufferSpan.Slice(pos, EocdMinLength),
+                    bufferSpan.Slice(pos, EndOfCentralDirectory.MinLength),
                     zipStream.Length - bufferSize + pos,
                     out ZipStructure? zipInfo))
                 {
@@ -286,25 +330,26 @@ internal class ZipStructure
 
         zipInfo = null;
 
-        long cdCount = BinaryPrimitives.ReadInt16LittleEndian(eocdRecord[10..12]);
-        long cdLength = BinaryPrimitives.ReadInt32LittleEndian(eocdRecord[12..16]);
-        long cdOffset = BinaryPrimitives.ReadInt32LittleEndian(eocdRecord[16..20]);
+        ref readonly EndOfCentralDirectory eocd = ref MemoryMarshal.AsRef<EndOfCentralDirectory>(eocdRecord);
+        long cdCount = eocd.CentralDirectoryTotalRecords;
+        long cdLength = eocd.CentralDirectoryLength;
+        long cdOffset = eocd.CentralDirectoryOffset;
+        ushort commentLength = eocd.CommentLength;
 
         // We validate the comment length doesn't exceed the remaining data
         // after the EOCD record.
-        ushort commentLen = BinaryPrimitives.ReadUInt16LittleEndian(eocdRecord[20..22]);
-        if (eocdOffset + EocdMinLength + commentLen > stream.Length)
+        if (eocdOffset + EndOfCentralDirectory.MinLength + commentLength > stream.Length)
         {
             // Comment length exceeds remaining data after EOCD record.
             return false;
         }
 
-        // If any of the CD information is set to -1 then we need to validate
-        // the ZIP64 EOCD locator and record are present and valid.
+        // If any of the CD information is set to 0xFFFF/0xFFFFFFFF sentinel values,
+        // we need to validate the ZIP64 EOCD locator and record are present and valid.
         long? eocd64LocatorOffset = null;
         long? eocd64Offset = null;
         long? eocd64Length = null;
-        if (cdCount == -1 || cdLength == -1 || cdOffset == -1)
+        if (cdCount == -1 || cdLength == uint.MaxValue || cdOffset == uint.MaxValue)
         {
             if (TryGetEndOfCentralDirectory64(
                 stream,
@@ -334,27 +379,24 @@ internal class ZipStructure
             return false;
         }
 
-        ReadOnlySpan<byte> cdSig = [0x50, 0x4b, 0x01, 0x02];
         stream.Seek(cdOffset, SeekOrigin.Begin);
-        stream.Read(buffer[..4]);
+        stream.ReadExactly(buffer[..4]);
 
-        if (!buffer[..4].SequenceEqual(cdSig))
+        int cdSignature = MemoryMarshal.Read<int>(buffer[..4]);
+        if (cdSignature != CentralDirectory.Signature)
         {
             // CD signature not found at expected offset.
             return false;
         }
 
-        Zip64Eocd? zip64 = eocd64Offset.HasValue
-            ? new Zip64Eocd(eocd64Offset.Value, eocd64Length!.Value, eocd64LocatorOffset!.Value)
+        ZipEocd64Info? zip64 = eocd64Offset.HasValue
+            ? new ZipEocd64Info(eocd64Offset.Value, eocd64Length!.Value, eocd64LocatorOffset!.Value)
             : null;
 
         zipInfo = new ZipStructure(
-            eocdOffset,
-            EocdMinLength + commentLen,
+            new ZipEocdInfo(eocdOffset, EndOfCentralDirectory.MinLength + commentLength),
             zip64,
-            cdOffset,
-            cdLength,
-            cdCount);
+            new ZipCentralDirectoryInfo(cdOffset, cdLength, cdCount));
 
         return true;
     }
@@ -370,54 +412,49 @@ internal class ZipStructure
         out long cdLength,
         out long cdCount)
     {
-        // The ZIP64 EOCD record is located by searching backwards from the
-        // EOCD record for the ZIP64 EOCD locator signature. The locator is
-        // 20 bytes long and contains the offset of the ZIP64 EOCD record,
-        // which is at least 56 bytes long.
-        ReadOnlySpan<byte> locatorSig = [0x50, 0x4b, 0x06, 0x07];
-        ReadOnlySpan<byte> eocd64Sig = [0x50, 0x4b, 0x06, 0x06];
+        Debug.Assert(buffer.Length >= EndOfCentralDirectory64.MinLength, "Buffer is expected to fit the ZIP64 EOCD record.");
 
-        Debug.Assert(buffer.Length >= Zip64Eocd.MinLength, "Buffer is expected to fit the ZIP64 EOCD record.");
-
-        locatorOffset = eocdOffset - Zip64Eocd.LocatorLength;;
+        locatorOffset = eocdOffset - EndOfCentralDirectory64Locator.MinLength;
         eocd64Offset = 0;
         eocd64Length = 0;
         cdOffset = 0;
         cdLength = 0;
         cdCount = 0;
 
-        if (locatorOffset - Zip64Eocd.MinLength < 0)
+        if (locatorOffset - EndOfCentralDirectory64.MinLength < 0)
         {
             // Not enough data to contain the locator and ZIP64 EOCD so this is
             // not a valid record.
             return false;
         }
-        zipStream.Seek(locatorOffset, SeekOrigin.Begin);
-        zipStream.Read(buffer[..Zip64Eocd.LocatorLength]);
 
-        if (!buffer[..4].SequenceEqual(locatorSig))
+        zipStream.Seek(locatorOffset, SeekOrigin.Begin);
+        zipStream.ReadExactly(buffer[..EndOfCentralDirectory64Locator.MinLength]);
+
+        ref readonly EndOfCentralDirectory64Locator locator = ref MemoryMarshal.AsRef<EndOfCentralDirectory64Locator>(buffer);
+        if (locator.EOCD64LocatorSignature != EndOfCentralDirectory64Locator.Signature)
         {
             return false;
         }
 
-        eocd64Offset = BinaryPrimitives.ReadInt64LittleEndian(buffer[8..16]);
-        if (eocd64Offset < 0 || eocd64Offset > zipStream.Length - Zip64Eocd.MinLength)
+        eocd64Offset = locator.EndOfCentralDirectoryOffset;
+        if (eocd64Offset < 0 || eocd64Offset > zipStream.Length - EndOfCentralDirectory64.MinLength)
         {
             return false;
         }
 
         zipStream.Seek(eocd64Offset, SeekOrigin.Begin);
-        zipStream.Read(buffer[..Zip64Eocd.MinLength]);
+        zipStream.ReadExactly(buffer[..EndOfCentralDirectory64.MinLength]);
 
-        if (!buffer[..4].SequenceEqual(eocd64Sig))
+        ref readonly EndOfCentralDirectory64 eocd64 = ref MemoryMarshal.AsRef<EndOfCentralDirectory64>(buffer);
+        if (eocd64.EOCDSignature != EndOfCentralDirectory64.Signature)
         {
             return false;
         }
 
         // The size omits the signature and the size record so we add it back
         // in for easier calculation.
-        eocd64Length = BinaryPrimitives.ReadInt64LittleEndian(buffer[4..12]) + 12;
-
+        eocd64Length = eocd64.SizeOfRecord + 12;
         if (eocd64Offset + eocd64Length > locatorOffset)
         {
             // The ZIP64 EOCD record goes beyond the locator offset which is
@@ -425,9 +462,9 @@ internal class ZipStructure
             return false;
         }
 
-        cdCount = BinaryPrimitives.ReadInt64LittleEndian(buffer[32..40]);
-        cdLength = BinaryPrimitives.ReadInt64LittleEndian(buffer[40..48]);
-        cdOffset = BinaryPrimitives.ReadInt64LittleEndian(buffer[48..56]);
+        cdCount = eocd64.CentralDirectoryTotalRecords;
+        cdLength = eocd64.CentralDirectoryLength;
+        cdOffset = eocd64.CentralDirectoryOffset;
 
         return true;
     }
@@ -451,7 +488,7 @@ internal class ZipStructure
                 buffer = buffer[..length];
             }
 
-            stream.Read(buffer);
+            stream.ReadExactly(buffer);
             return encoding.GetString(buffer);
         }
         finally
@@ -463,7 +500,7 @@ internal class ZipStructure
         }
     }
 
-    private static (long, long, long) GetCentralDirectoryZip64ExtraFields(
+    private static (long compressedLength, long uncompressedLength, long lfhOffset) GetCentralDirectoryZip64ExtraFields(
         Stream zipStream,
         Span<byte> buffer,
         int extraFieldLen,
@@ -475,31 +512,33 @@ internal class ZipStructure
 
         // The ZIP64 extra field contains the actual values for the compressed,
         // uncompressed size, and local header offset fields if they are set to
-        // -1. The fields are stored under the header ID 0x0001 and the order
-        // is dependent on which fields are set to -1 in the CD record.
+        // 0xFFFFFFFF (uint.MaxValue). The fields are stored under the header ID
+        // 0x0001 and the order is dependent on which fields are set to the
+        // sentinel value in the CD record.
         int read = 0;
-        while (read < extraFieldLen && (compressedSize == -1 || uncompressedSize == -1 || localHeaderOffset == -1))
+        while (read < extraFieldLen && (compressedSize == uint.MaxValue || uncompressedSize == uint.MaxValue || localHeaderOffset == uint.MaxValue))
         {
-            zipStream.Read(buffer[..4]);
-            short headerId = BinaryPrimitives.ReadInt16LittleEndian(buffer[..2]);
-            short dataSize = BinaryPrimitives.ReadInt16LittleEndian(buffer[2..4]);
+            zipStream.ReadExactly(buffer[..4]);
 
-            if (headerId == 0x0001)
+            ref readonly ExtraField extraField = ref MemoryMarshal.AsRef<ExtraField>(buffer);
+            short headerId = extraField.HeaderId;
+            ushort dataLength = extraField.DataLength;
+
+            if (headerId == ExtraField.Zip64ExtendedInformation)
             {
                 // ZIP64 extended information extra field.
-                if (dataSize < 8)
+                if (dataLength < 8)
                 {
-                    // At minimum the compressed size field must be present which is 8 bytes, so the data size must be at least 8 bytes.
                     throw new InvalidDataException("Invalid ZIP64 extra field, data size is too small to contain required fields");
                 }
 
-                zipStream.Read(buffer[..8]);
-                long zip64Value = BinaryPrimitives.ReadInt64LittleEndian(buffer[..8]);
-                if (compressedSize == -1)
+                zipStream.ReadExactly(buffer[..8]);
+                long zip64Value = MemoryMarshal.Read<long>(buffer[..8]);
+                if (compressedSize == uint.MaxValue)
                 {
                     compressedSize = zip64Value;
                 }
-                else if (uncompressedSize == -1)
+                else if (uncompressedSize == uint.MaxValue)
                 {
                     uncompressedSize = zip64Value;
                 }
@@ -510,13 +549,13 @@ internal class ZipStructure
             }
             else
             {
-                zipStream.Seek(dataSize, SeekOrigin.Current);
+                zipStream.Seek(dataLength, SeekOrigin.Current);
             }
 
-            read += 4 + dataSize;
+            read += 4 + dataLength;
         }
 
-        if (compressedSize == -1 || uncompressedSize == -1 || localHeaderOffset == -1)
+        if (compressedSize == uint.MaxValue || uncompressedSize == uint.MaxValue || localHeaderOffset == uint.MaxValue)
         {
             // We didn't find the ZIP64 extra field or it didn't contain all the required fields.
             throw new InvalidDataException("ZIP64 extra field not found or missing required fields");
@@ -525,7 +564,7 @@ internal class ZipStructure
         return (compressedSize, uncompressedSize, localHeaderOffset);
     }
 
-    private static (long, int) GetLocalHeaderLengths(
+    private static (long lfhLength, int descriptorLength) GetLocalHeaderLengths(
         Stream zipStream,
         Span<byte> buffer,
         long compressedLength,
@@ -533,21 +572,20 @@ internal class ZipStructure
         bool hasDataDescriptor,
         bool isZip64)
     {
-        Debug.Assert(buffer.Length >= 30, "Buffer is expected to fit the local header fixed fields for validation.");
+        Debug.Assert(buffer.Length >= LocalFileHeader.MinLength, "Buffer is expected to fit the local header fixed fields for validation.");
 
-        if (localHeaderOffset + LocalFileHeaderMinSize + compressedLength > zipStream.Length)
+        if (localHeaderOffset + LocalFileHeader.MinLength + compressedLength > zipStream.Length)
         {
             throw new InvalidDataException(
                 "Provided stream is not valid for the ZIP structure recorded, local header extends beyond end of stream");
         }
 
         zipStream.Seek(localHeaderOffset, SeekOrigin.Begin);
-        zipStream.Read(buffer[..LocalFileHeaderMinSize]);
+        zipStream.ReadExactly(buffer[..LocalFileHeader.MinLength]);
 
-        short fileNameLen = BinaryPrimitives.ReadInt16LittleEndian(buffer[26..28]);
-        short extraFieldLen = BinaryPrimitives.ReadInt16LittleEndian(buffer[28..30]);
+        ref readonly LocalFileHeader lfh = ref MemoryMarshal.AsRef<LocalFileHeader>(buffer);
 
-        long finalHeaderLength = LocalFileHeaderMinSize + fileNameLen + extraFieldLen;
+        long finalHeaderLength = LocalFileHeader.MinLength + lfh.FileNameLength + lfh.ExtraFieldLength;
 
         int descriptorLength = 0;
         if (hasDataDescriptor)
@@ -557,10 +595,10 @@ internal class ZipStructure
             // on whether the signature is present or not.
             descriptorLength = isZip64 ? 24 : 16;
 
-            ReadOnlySpan<byte> descriptorSig = [0x50, 0x4b, 0x07, 0x08];
             zipStream.Seek(localHeaderOffset + finalHeaderLength + compressedLength, SeekOrigin.Begin);
-            zipStream.Read(buffer[..4]);
-            if (!buffer[..4].SequenceEqual(descriptorSig))
+            zipStream.ReadExactly(buffer[..4]);
+            int signature = MemoryMarshal.Read<int>(buffer[..4]);
+            if (signature != LocalFileHeader.DataDescriptorSignature)
             {
                 descriptorLength -= 4;
             }
